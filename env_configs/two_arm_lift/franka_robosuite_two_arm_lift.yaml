@@ -1,0 +1,40 @@
+# Usage: uv run hyrl/envs/launch.py --config-path env_configs/two_arm_lift/franka_robosuite_two_arm_lift.yaml
+
+env:
+  _target_: capx.envs.tasks.franka.two_arm_lift.TwoArmLiftCodeEnv
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    low_level: two_arm_lift_robosuite  # Registry name for low-level env
+    apis:
+      - FrankaTwoArmLiftApi
+    # prompt is inherited from TwoArmLiftCodeEnv class default
+
+api_servers:
+  - _target_: capx.serving.launch_owlvit_server.main
+    device: cuda
+    port: 8117
+    host: 127.0.0.1
+    model_name: google/owlv2-large-patch14-ensemble
+    
+  - _target_: capx.serving.launch_sam2_server.main
+    device: cuda
+    port: 8113
+    host: 127.0.0.1
+    model_name: facebook/sam2.1-hiera-large
+    
+  - _target_: capx.serving.launch_contact_graspnet_server.main
+    port: 8115
+    host: 127.0.0.1
+    
+  - _target_: capx.serving.launch_pyroki_server.main
+    port: 8116
+    host: 127.0.0.1
+    robot: panda_description
+    target_link: panda_hand
+
+record_video: true
+output_dir: ./outputs/franka_robosuite_two_arm_lift
+
+trials: 100
+num_workers: 12
+use_oracle_code: false

@@ -1,0 +1,12 @@
+.venv/
+output/
+outputs/
+checkpoints/
+capx/third_party/
+libero_dataset/
+*.pt
+*.tar
+*.tar.gz
+*.parquet
+*.mp4
+

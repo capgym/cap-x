@@ -1,0 +1,57 @@
+# Usage: uv run hyrl/envs/launch.py --config-path env_configs/cube_stack/franka_robosuite_cube_stack_multiturn_vdm_reduced_api_skill_lib.yaml
+
+env:
+  _target_: capx.envs.tasks.franka.franka_pick_place.FrankaPickPlaceCodeEnv
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    low_level: franka_robosuite_cubes_low_level
+    privileged: false
+    apis:
+      - FrankaControlApiReducedSkillLibrary
+    prompt: |
+      You are controlling a Franka Emika robot with API described below.
+      Goal: place the red cube on top of the green cube and then open the gripper.
+      You may write python code comments for reasoning but ONLY write the executable Python code and do not write it in code fences.
+      After this code executes, you will be able to get a new observation of the environment and write new code to complete the task if needed.
+      The functions (APIs) below are already imported to the environment. If you want to use numpy, you need to import it explicitly.
+    
+    multi_turn_prompt: |
+      The following code blocks were just executed:
+      ```python
+      {executed_code}
+      ```
+      The current console stdout is:
+      ```
+      {console_stdout}
+      ```
+      The current console stderr is:
+      ```
+      {console_stderr}
+      ```
+      If there were no errors during compilation or execution, the console stderr will be empty. If there were errors, consider regenerating the code.
+      Please respond with EXACTLY ONE of the following:
+      - The word 'REGENERATE' followed immediately by new Python code in a fenced code block (```python...```) if you want to modify the code.
+      - The word 'FINISH' if the task appears to be complete
+
+api_servers:
+  - _target_: capx.serving.launch_sam3_server.main
+    device: cuda
+    port: 8114
+    host: 127.0.0.1
+    
+  - _target_: capx.serving.launch_contact_graspnet_server.main
+    port: 8115
+    host: 127.0.0.1
+
+  - _target_: capx.serving.launch_pyroki_server.main
+    port: 8116
+    host: 127.0.0.1
+    robot: panda_description
+    target_link: panda_hand
+
+record_video: true
+use_img_differencing: true
+output_dir: ./outputs/franka_robosuite_cube_stack_multiturn_vdm_reduced_api_skill_lib
+
+trials: 100
+num_workers: 12

@@ -1,0 +1,228 @@
+<?xml version='1.0' encoding='utf-8'?>
+<mujoco model="ur5_pick_place_real">
+  <compiler angle="radian" meshdir="." autolimits="true" />
+  <option integrator="implicitfast" />
+  <default>
+    <default class="ur5e">
+      <material specular="0.5" shininess="0.25" />
+      <joint axis="0 1 0" range="-6.28319 6.28319" armature="0.1" />
+      <general gaintype="fixed" biastype="affine" ctrlrange="-6.2831 6.2831" gainprm="2000" biasprm="0 -2000 -400" forcerange="-150 150" />
+      <default class="size3">
+        <default class="size3_limited">
+          <joint range="-3.1415 3.1415" />
+          <general ctrlrange="-3.1415 3.1415" />
+        </default>
+      </default>
+      <default class="size1">
+        <general gainprm="500" biasprm="0 -500 -100" forcerange="-28 28" />
+      </default>
+      <default class="visual">
+        <geom type="mesh" contype="0" conaffinity="0" group="2" />
+      </default>
+      <default class="collision">
+        <geom type="capsule" group="3" />
+        <default class="eef_collision">
+          <geom type="cylinder" />
+        </default>
+      </default>
+      <site size="0.001" rgba="0.5 0.5 0.5 0.3" group="4" />
+    </default>
+
+    <!-- Keep gripper defaults; our slide joints override joint attrs locally -->
+    <default class="gripper_2f85">
+      <mesh scale="0.001 0.001 0.001" />
+      <general biastype="affine" />
+      <joint axis="1 0 0" />
+      <default class="gripper_visual">
+        <geom type="mesh" contype="0" conaffinity="0" group="2" />
+      </default>
+      <default class="gripper_collision">
+        <geom type="mesh" group="3" />
+          <default class="gripper_pad_box1">
+            <geom density="800" type="box" pos="0 -0.0026 0.028125" size="0.011 0.004 0.009375"
+                  friction="1.2 0.02 0.002" solimp="0.995 0.999 0.0005" solref="0.0004 1" priority="1" rgba="0.55 0.55 0.55 1"/>
+          </default>
+          <default class="gripper_pad_box2">
+            <geom density="800" type="box" pos="0 -0.0026 0.009375" size="0.011 0.004 0.009375"
+                  friction="1.2 0.02 0.002" solimp="0.995 0.999 0.0005" solref="0.0004 1" priority="1" rgba="0.45 0.45 0.45 1"/>
+          </default>
+      </default>
+    </default>
+  </default>
+
+  <asset>
+    <material class="ur5e" name="black" rgba="0.033 0.033 0.033 1" />
+    <material class="ur5e" name="jointgray" rgba="0.278 0.278 0.278 1" />
+    <material class="ur5e" name="linkgray" rgba="0.82 0.82 0.82 1" />
+    <material class="ur5e" name="urblue" rgba="0.49 0.678 0.8 1" />
+    <mesh file="ur5e/base_0.obj" />
+    <mesh file="ur5e/base_1.obj" />
+    <mesh file="ur5e/shoulder_0.obj" />
+    <mesh file="ur5e/shoulder_1.obj" />
+    <mesh file="ur5e/shoulder_2.obj" />
+    <mesh file="ur5e/upperarm_0.obj" />
+    <mesh file="ur5e/upperarm_1.obj" />
+    <mesh file="ur5e/upperarm_2.obj" />
+    <mesh file="ur5e/upperarm_3.obj" />
+    <mesh file="ur5e/forearm_0.obj" />
+    <mesh file="ur5e/forearm_1.obj" />
+    <mesh file="ur5e/forearm_2.obj" />
+    <mesh file="ur5e/forearm_3.obj" />
+    <mesh file="ur5e/wrist1_0.obj" />
+    <mesh file="ur5e/wrist1_1.obj" />
+    <mesh file="ur5e/wrist1_2.obj" />
+    <mesh file="ur5e/wrist2_0.obj" />
+    <mesh file="ur5e/wrist2_1.obj" />
+    <mesh file="ur5e/wrist2_2.obj" />
+    <mesh file="ur5e/wrist3.obj" />
+    <material name="hyrl_cube" rgba="0.9 0.2 0.2 1" />
+    <material name="hyrl_cube_secondary" rgba="0.2 0.4 0.85 1" />
+    <texture name="hyrl_ground" type="2d" builtin="checker" width="512" height="512" rgb1=".2 .3 .4" rgb2=".1 .1 .1" />
+    <material name="hyrl_ground" texture="hyrl_ground" texrepeat="4 4" reflectance="0.2" />
+    <material name="metal" rgba="0.58 0.58 0.58 1" />
+    <material name="silicone" rgba="0.1882 0.1882 0.1882 1" />
+    <material name="gray" rgba="0.4627 0.4627 0.4627 1" />
+    <mesh class="gripper_2f85" file="robotiq_2f85/base_mount.stl" name="base_mount" />
+    <mesh class="gripper_2f85" file="robotiq_2f85/base.stl" name="base" />
+    <!-- meshes below remain available if you want visual details, but not required by the new slides -->
+    <mesh class="gripper_2f85" file="robotiq_2f85/driver.stl" name="driver" />
+    <mesh class="gripper_2f85" file="robotiq_2f85/coupler.stl" name="coupler" />
+    <mesh class="gripper_2f85" file="robotiq_2f85/follower.stl" name="follower" />
+    <mesh class="gripper_2f85" file="robotiq_2f85/pad.stl" name="pad" />
+    <mesh class="gripper_2f85" file="robotiq_2f85/silicone_pad.stl" name="silicone_pad" />
+    <mesh class="gripper_2f85" file="robotiq_2f85/spring_link.stl" name="spring_link" />
+  </asset>
+
+  <worldbody>
+    <light name="spotlight" mode="targetbodycom" target="wrist_2_link" pos="0 -1 2" />
+    <body name="base" quat="0 0 0 -1" childclass="ur5e">
+      <inertial mass="4.0" pos="0 0 0" diaginertia="0.00443333156 0.00443333156 0.0072" />
+      <geom mesh="base_0" material="black" class="visual" />
+      <geom mesh="base_1" material="jointgray" class="visual" />
+      <body name="shoulder_link" pos="0 0 0.163">
+        <inertial mass="3.7" pos="0 0 0" diaginertia="0.0102675 0.0102675 0.00666" />
+        <joint name="shoulder_pan_joint" class="size3" axis="0 0 1" />
+        <geom mesh="shoulder_0" material="urblue" class="visual" />
+        <geom mesh="shoulder_1" material="black" class="visual" />
+        <geom mesh="shoulder_2" material="jointgray" class="visual" />
+        <geom class="collision" size="0.06 0.06" pos="0 0 -0.04" />
+        <body name="upper_arm_link" pos="0 0.138 0" quat="1 0 1 0">
+          <inertial mass="8.393" pos="0 0 0.2125" diaginertia="0.133886 0.133886 0.0151074" />
+          <joint name="shoulder_lift_joint" class="size3" />
+          <geom mesh="upperarm_0" material="linkgray" class="visual" />
+          <geom mesh="upperarm_1" material="black" class="visual" />
+          <geom mesh="upperarm_2" material="jointgray" class="visual" />
+          <geom mesh="upperarm_3" material="urblue" class="visual" />
+          <geom class="collision" pos="0 -0.04 0" quat="1 1 0 0" size="0.06 0.06" />
+          <geom class="collision" size="0.05 0.2" pos="0 0 0.2" />
+          <body name="forearm_link" pos="0 -0.131 0.425">
+            <inertial mass="2.275" pos="0 0 0.196" diaginertia="0.0311796 0.0311796 0.004095" />
+            <joint name="elbow_joint" class="size3_limited" />
+            <geom mesh="forearm_0" material="urblue" class="visual" />
+            <geom mesh="forearm_1" material="linkgray" class="visual" />
+            <geom mesh="forearm_2" material="black" class="visual" />
+            <geom mesh="forearm_3" material="jointgray" class="visual" />
+            <geom class="collision" pos="0 0.08 0" quat="1 1 0 0" size="0.055 0.06" />
+            <geom class="collision" size="0.038 0.19" pos="0 0 0.2" />
+            <body name="wrist_1_link" pos="0 0 0.392" quat="1 0 1 0">
+              <inertial mass="1.219" pos="0 0.127 0" diaginertia="0.0025599 0.0025599 0.0021942" />
+              <joint name="wrist_1_joint" class="size1" />
+              <geom mesh="wrist1_0" material="black" class="visual" />
+              <geom mesh="wrist1_1" material="urblue" class="visual" />
+              <geom mesh="wrist1_2" material="jointgray" class="visual" />
+              <geom class="collision" pos="0 0.05 0" quat="1 1 0 0" size="0.04 0.07" />
+              <body name="wrist_2_link" pos="0 0.127 0">
+                <inertial mass="1.219" pos="0 0 0.1" diaginertia="0.0025599 0.0025599 0.0021942" />
+                <joint name="wrist_2_joint" axis="0 0 1" class="size1" />
+                <geom mesh="wrist2_0" material="black" class="visual" />
+                <geom mesh="wrist2_1" material="urblue" class="visual" />
+                <geom mesh="wrist2_2" material="jointgray" class="visual" />
+                <geom class="collision" size="0.04 0.06" pos="0 0 0.04" />
+                <geom class="collision" pos="0 0.02 0.1" quat="1 1 0 0" size="0.04 0.04" />
+                <body name="wrist_3_link" pos="0 0 0.1">
+                  <inertial mass="0.1889" pos="0 0.0771683 0" quat="1 0 0 1" diaginertia="0.000132134 9.90863e-05 9.90863e-05" />
+                  <joint name="wrist_3_joint" class="size1" />
+                  <geom material="linkgray" mesh="wrist3" class="visual" />
+                  <geom class="eef_collision" pos="0 0.08 0" quat="1 1 0 0" size="0.04 0.02" />
+                  <site name="attachment_site" pos="0 0.1 0" quat="-1 1 0 0" />
+
+                  <!-- Gripper mount and simplified parallel jaws -->
+                  <body name="gripper_mount" pos="0 0.1 0" quat="-1 1 0 0">
+                    <body name="gripper_base_mount" pos="0 0 0.007" childclass="gripper_2f85">
+                      <geom class="gripper_visual" mesh="base_mount" material="black" />
+                      <geom class="gripper_collision" mesh="base_mount" />
+                      <body name="gripper_base" pos="0 0 0.0038" quat="1 0 0 -1">
+                        <inertial mass="0.777441" pos="0 -2.70394e-05 0.0354675" quat="1 -0.00152849 0 0" diaginertia="0.000260285 0.000225381 0.000152708" />
+                        <geom class="gripper_visual" mesh="base" material="black" />
+                        <geom class="gripper_collision" mesh="base" />
+
+                        <!-- Pinch site retained -->
+                        <site name="gripper_pinch" pos="0 0 0.145" type="sphere" group="5" rgba="0.9 0.9 0.9 1" size="0.005" />
+
+                        <!-- Right jaw: slides +Y from negative Y start toward centerline -->
+                        <body name="jaw_right" pos="0 -0.020 0.135">
+                          <joint name="right_slide" type="slide" axis="0 1 0" range="0 0.040"/>
+                          <geom name="gripper_right_pad1" class="gripper_pad_box1" />
+                          <geom name="gripper_right_pad2" class="gripper_pad_box2" />
+                        </body>
+
+                        <!-- Left jaw: slides +Y but mirrored via equality (q_left = - q_right) -->
+                        <body name="jaw_left" pos="0 0.020 0.135">
+                          <joint name="left_slide" type="slide" axis="0 1 0" range="-0.040 0"/>
+                          <!-- reuse default pads but flipped sign on local Y offsets via defaults above -->
+                          <geom name="gripper_left_pad1" class="gripper_pad_box1" pos="0 0.0026 0.028125"/>
+                          <geom name="gripper_left_pad2" class="gripper_pad_box2" pos="0 0.0026 0.009375"/>
+                        </body>
+
+                      </body>
+                    </body>
+                  </body>
+
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+
+    <geom name="hyrl_ground" type="plane" pos="0 0 0" size="5 5 0.1" material="hyrl_ground" />
+    <light name="hyrl_key" directional="true" pos="0 0 3" dir="0 0 -1" diffuse="1 1 1" specular="0.2 0.2 0.2" />
+    <light name="hyrl_fill" directional="false" pos="1.0 -1.5 1.5" diffuse="0.7 0.7 0.7" />
+
+    <body name="hyrl_cube_primary" pos="0.45 0.0 0.0">
+      <joint type="free" name="hyrl_cube_primary_root" />
+      <geom name="hyrl_cube_primary_geom" type="box" size="0.025 0.025 0.025" density="100" material="hyrl_cube"
+            friction="0.45 0.01 0.001"/>
+    </body>
+    <body name="hyrl_cube_secondary" pos="0.55 0.0 0.0">
+      <joint type="free" name="hyrl_cube_secondary_root" />
+      <geom name="hyrl_cube_secondary_geom" type="box" size="0.025 0.025 0.025" density="100" material="hyrl_cube_secondary"
+            friction="0.45 0.01 0.001"/>
+    </body>
+  </worldbody>
+
+  <actuator>
+    <general class="size3" name="shoulder_pan" joint="shoulder_pan_joint" />
+    <general class="size3" name="shoulder_lift" joint="shoulder_lift_joint" />
+    <general class="size3_limited" name="elbow" joint="elbow_joint" />
+    <general class="size1" name="wrist_1" joint="wrist_1_joint" />
+    <general class="size1" name="wrist_2" joint="wrist_2_joint" />
+    <general class="size1" name="wrist_3" joint="wrist_3_joint" />
+
+    <!-- Parallel gripper: single position actuator drives right_slide; left mirrors via equality -->
+    <position name="fingers_actuator" joint="right_slide" kp="800" forcerange="-120 120"/>
+  </actuator>
+
+  <!-- Remove old gripper contact excludes that referenced deleted bodies; keep none here -->
+  <contact>
+    <!-- (optional) Add excludes if your jaw bodies collide with the base unexpectedly -->
+  </contact>
+
+  <equality>
+    <!-- Mirror motion: q_left = - q_right -->
+    <joint joint1="right_slide" joint2="left_slide" polycoef="0 -1 0 0 0"/>
+  </equality>
+
+  <!-- No tendon needed for the parallel jaws -->
+</mujoco>

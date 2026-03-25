@@ -1,0 +1,35 @@
+# Usage: uv run capx/envs/launch.py --config-path env_configs/r1pro/b1k_moving_boxes_to_storage.yaml
+env:
+  _target_: capx.envs.tasks.r1pro.r1pro_behavior.R1ProBehaviorCodeEnv
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    low_level:
+      _target_: capx.envs.simulators.r1pro_b1k.R1ProBehaviourLowLevel
+      controller_cfg: r1pro_primitives.yaml
+      activity_name: moving_boxes_to_storage
+    privileged: false
+    apis:
+      - R1ProControlApi
+    prompt: |
+      You are controlling a R1Pro robot with the API described below.
+      Goal: Move the boxes to storage.
+      You may write python code comments for reasoning but ONLY write the executable Python code and do not write it in code fences.
+      The functions (APIs) below are already imported to the environment. If you want to use numpy, you need to import it explicitly.
+
+api_servers:
+  - _target_: capx.serving.launch_sam3_server.main
+    device: cuda
+    port: 8114
+    host: 127.0.0.1
+
+  - _target_: capx.serving.launch_contact_graspnet_server.main
+    port: 8115
+    host: 127.0.0.1
+
+record_video: true
+output_dir: ./outputs/b1k_moving_boxes_to_storage
+
+trials: 20
+resume_idx: 1
+num_workers: 1
+use_oracle_code: false

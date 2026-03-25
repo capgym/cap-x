@@ -1,0 +1,42 @@
+# Usage: uv run hyrl/envs/launch.py --config-path env_configs/human_oracle_code/two_arm_handover_privileged_oracle.yaml
+
+env:
+  _target_: capx.envs.tasks.franka.two_arm_handover.TwoArmHandoverCodeEnv
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    low_level:
+      _target_: capx.envs.simulators.robosuite_handover.RobosuiteHandoverEnv
+      viser_debug: false
+      privileged: false
+      enable_render: true
+    apis:
+      - FrankaHandoverPrivilegedApi
+    prompt: |
+      You are controlling a two-arm Franka Emika robot system with API described below.
+      Goal: Arm 0 should pick up the hammer, lift it, and hand it over to Arm 1. Arm 1 should then grasp the hammer handle. The hammer handle should be lifted above the table surface (height threshold ~0.1m) to count as a successful handover.
+
+      Guidance:
+      - First, you should initially approach the hammer with arm0 from above and use quaternion = [0, 0.707, 0.707, 0], regardless of the hammer quaternion.
+      - Second, you should move arm0 to the handover position, which should roughly be at the midpoint of the 2 robots. 
+          - When you move arm0 to the handover position, you should use quaternion = [0, 1, 0, 0].
+          - When you move arm1 to the handover position, you should use quaternion = [0, 0, 1, 0]. arm1 should approach the hammer from above so it doesn't collide with arm0.
+      - Third, arm1 should grip onto the hammer to complete the handover. Optionally, you can move arm0 away from arm1.
+
+      Coordinate system:
+      - All pose functions accept positions in robot0's base frame (same coordinate system as returned by get_hammer_pose/get_handle_pose).
+      - The coordinate axis follows these conventions:
+        - Z-axis: up (positive) and down (negative)
+        - X-axis: right (positive) and left (negative) 
+        - Y-axis: forward (positive) and backward (negative)
+
+      You may write python code comments for reasoning but ONLY write the executable Python code and do not write it in code fences.
+      The functions (APIs) below are already imported to the environment. If you want to use numpy, you need to import it explicitly.
+    
+record_video: true
+output_dir: ./outputs/two_arm_handover_privileged_oracle
+
+trials: 100
+num_workers: 10
+use_oracle_code: true
+
+

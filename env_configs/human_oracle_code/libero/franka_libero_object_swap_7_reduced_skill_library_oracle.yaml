@@ -1,0 +1,261 @@
+# Usage: uv run capx/envs/launch.py --config-path env_configs/human_oracle_code/libero/franka_libero_object_swap_7_reduced_skill_library_oracle.yaml
+
+env:
+  _target_: capx.envs.tasks.franka.franka_libero_env.FrankaLiberoCodeEnv
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    apis:
+      - FrankaLiberoApiReducedSkillLibrary
+    low_level:
+      _target_: capx.envs.simulators.libero.FrankaLiberoEnv
+      suite_name: libero_object_swap
+      task_id: 7
+    privileged: false
+    # Write your oracle code here!
+    oracle_code: |
+      import numpy as np
+
+      def _as_depth_2d(d):
+          d = np.asarray(d)
+          if d.ndim == 3 and d.shape[-1] == 1:
+              return d[:, :, 0]
+          return d
+
+      def _best_mask(masks):
+          if not masks:
+              return None
+          valid = [m for m in masks if isinstance(m, dict) and m.get("mask", None) is not None]
+          if not valid:
+              return None
+          return max(valid, key=lambda d: float(d.get("score", 0.0)))
+
+      def _mask_centroid(mask_bool):
+          ys, xs = np.where(mask_bool)
+          if xs.size == 0:
+              return None
+          return (int(np.round(xs.mean())), int(np.round(ys.mean())))
+
+      def _safe_depth_at(depth, u, v, mask=None, r=12):
+          depth = _as_depth_2d(depth).astype(np.float64)
+          H, W = depth.shape
+          u0 = int(np.clip(u, 0, W - 1))
+          v0 = int(np.clip(v, 0, H - 1))
+          x1, x2 = max(0, u0 - r), min(W, u0 + r + 1)
+          y1, y2 = max(0, v0 - r), min(H, v0 + r + 1)
+          patch = depth[y1:y2, x1:x2]
+          if mask is not None:
+              mpatch = mask[y1:y2, x1:x2].astype(bool)
+              vals = patch[mpatch]
+          else:
+              vals = patch.reshape(-1)
+          vals = vals[np.isfinite(vals)]
+          vals = vals[(vals > 0.02) & (vals < 5.0)]
+          if vals.size == 0:
+              z = float(depth[v0, u0])
+              if np.isfinite(z) and (z > 0.02) and (z < 5.0):
+                  return z
+              return None
+          return float(np.median(vals))
+
+      def _make_topdown_quat(yaw=0.0):
+          cy, sy = np.cos(yaw), np.sin(yaw)
+          Rz = np.array([[cy, -sy, 0.0],
+                        [sy,  cy, 0.0],
+                        [0.0, 0.0, 1.0]], dtype=np.float64)
+          Rx = np.array([[1.0, 0.0, 0.0],
+                        [0.0, -1.0, 0.0],
+                        [0.0, 0.0, -1.0]], dtype=np.float64)
+          R = Rz @ Rx
+          return rotation_matrix_to_quaternion(R)
+
+      def _segment_text_best(rgb, prompts):
+          best = None
+          for p in prompts:
+              try:
+                  bm = _best_mask(segment_sam3_text_prompt(rgb, p))
+              except Exception:
+                  bm = None
+              if bm is None:
+                  continue
+              if best is None or float(bm.get("score", 0.0)) > float(best.get("score", 0.0)):
+                  best = bm
+          return best
+
+      def _molmo_point(rgb, prompt):
+          try:
+              pts = point_prompt_molmo(rgb, prompt)
+          except Exception:
+              pts = None
+          if not isinstance(pts, dict) or len(pts) == 0:
+              return None
+          xy = list(pts.values())[0]
+          if xy is None or xy[0] is None or xy[1] is None:
+              return None
+          return (int(xy[0]), int(xy[1]))
+
+      def _segment_point_best(rgb, xy):
+          try:
+              return _best_mask(segment_sam3_point_prompt(rgb, (float(xy[0]), float(xy[1]))))
+          except Exception:
+              return None
+
+      def _largest_cc(mask_bool):
+          mask = mask_bool.astype(np.uint8)
+          H, W = mask.shape
+          visited = np.zeros((H, W), dtype=bool)
+          best_coords = None
+          best_sz = 0
+          for y in range(H):
+              for x in range(W):
+                  if mask[y, x] == 0 or visited[y, x]:
+                      continue
+                  stack = [(y, x)]
+                  visited[y, x] = True
+                  coords = []
+                  while stack:
+                      cy, cx = stack.pop()
+                      coords.append((cy, cx))
+                      for ny, nx in ((cy - 1, cx), (cy + 1, cx), (cy, cx - 1), (cy, cx + 1)):
+                          if 0 <= ny < H and 0 <= nx < W and (not visited[ny, nx]) and mask[ny, nx] == 1:
+                              visited[ny, nx] = True
+                              stack.append((ny, nx))
+                  if len(coords) > best_sz:
+                      best_sz = len(coords)
+                      best_coords = coords
+          if best_coords is None:
+              return mask_bool.astype(bool)
+          out = np.zeros((H, W), dtype=bool)
+          ys, xs = zip(*best_coords)
+          out[np.array(ys), np.array(xs)] = True
+          return out
+
+      def _compute_place_above_basket(depth, K, T_c2w, basket_mask):
+          try:
+              pts = mask_to_world_points(basket_mask.astype(np.uint8), depth, K, T_c2w).astype(np.float64)
+              pts = pts[np.isfinite(pts).all(axis=1)]
+              if pts.shape[0] >= 200:
+                  center_xy = np.median(pts[:, :2], axis=0)
+                  z_top = float(np.percentile(pts[:, 2], 97))
+                  return np.array([center_xy[0], center_xy[1], z_top + 0.18], dtype=np.float64)
+          except Exception:
+              pass
+
+          c = _mask_centroid(basket_mask)
+          if c is None:
+              return None
+          u, v = c
+          z = _safe_depth_at(depth, u, v, mask=basket_mask, r=16)
+          if z is None:
+              return None
+          p = pixel_to_world_point(u, v, z, K, T_c2w).astype(np.float64)
+          p[2] += 0.28
+          return p
+
+      def _pick_and_place_milk_to_basket():
+          obs = get_observation()
+          cam = obs["agentview"]
+          rgb = cam["images"]["rgb"]
+          depth = _as_depth_2d(cam["images"]["depth"])
+          K = cam["intrinsics"]
+          T = cam["pose_mat"]
+
+          open_gripper()
+
+          target_best = _segment_text_best(
+              rgb,
+              ["milk can", "milk box", "milk carton","milk"]
+          )
+          if target_best is None:
+              xy = _molmo_point(rgb, "milk")
+              if xy is None:
+                  raise RuntimeError("Molmo failed to point to milk.")
+              target_best = _segment_point_best(rgb, xy)
+          if target_best is None:
+              raise RuntimeError("Failed to segment milk.")
+
+          target_mask = _largest_cc(target_best["mask"].astype(bool))
+          if int(target_mask.sum()) < 40:
+              raise RuntimeError("Milk mask too small.")
+
+          c = _mask_centroid(target_mask)
+          if c is None:
+              raise RuntimeError("Milk mask empty.")
+          u, v = c
+          z = _safe_depth_at(depth, u, v, mask=target_mask, r=14)
+          if z is None:
+              raise RuntimeError("No valid depth on milk.")
+          grasp_pos = pixel_to_world_point(u, v, z, K, T).astype(np.float64)
+          grasp_quat = _make_topdown_quat(0.0)
+
+          pre = grasp_pos.copy()
+          pre[2] += 0.22
+          goto_pose(pre, grasp_quat, z_approach=0.0)
+
+          grasp = grasp_pos.copy()
+          grasp[2] += 0.012
+          goto_pose(grasp, grasp_quat, z_approach=0.14)
+          close_gripper()
+
+          lift = grasp_pos.copy()
+          lift[2] += 0.30
+          goto_pose(lift, grasp_quat, z_approach=0.0)
+
+          obs2 = get_observation()
+          cam2 = obs2["agentview"]
+          rgb2 = cam2["images"]["rgb"]
+          depth2 = _as_depth_2d(cam2["images"]["depth"])
+          K2 = cam2["intrinsics"]
+          T2 = cam2["pose_mat"]
+
+          basket_best = _segment_text_best(rgb2, ["basket", "woven basket", "rectangular basket", "container basket"])
+          if basket_best is None:
+              xy = _molmo_point(rgb2, "basket")
+              if xy is None:
+                  raise RuntimeError("Molmo failed to point to basket.")
+              basket_best = _segment_point_best(rgb2, xy)
+          if basket_best is None:
+              raise RuntimeError("Failed to segment basket.")
+
+          basket_mask = _largest_cc(basket_best["mask"].astype(bool))
+          if int(basket_mask.sum()) < 80:
+              raise RuntimeError("Basket mask too small.")
+
+          place_pos = _compute_place_above_basket(depth2, K2, T2, basket_mask)
+          if place_pos is None:
+              raise RuntimeError("Failed to compute place position.")
+
+          place_quat = _make_topdown_quat(0.0)
+          pre_place = place_pos.copy()
+          pre_place[2] += 0.14
+          goto_pose(pre_place, place_quat, z_approach=0.0)
+          goto_pose(place_pos, place_quat, z_approach=0.14)
+          open_gripper()
+
+          retreat = place_pos.copy()
+          retreat[2] += 0.28
+          goto_pose(retreat, place_quat, z_approach=0.0)
+
+      _pick_and_place_milk_to_basket()
+    
+api_servers:
+  - _target_: capx.serving.launch_pyroki_server.main
+    port: 8116
+    host: 127.0.0.1
+    robot: panda_description
+    target_link: panda_hand
+
+  - _target_: capx.serving.launch_contact_graspnet_server.main
+    port: 8115
+    host: 127.0.0.1
+
+  - _target_: capx.serving.launch_sam3_server.main
+    device: cuda
+    port: 8114
+    host: 127.0.0.1
+
+record_video: true
+output_dir: ./outputs/franka_libero_object_swap_7_reduced_skill_library_oracle
+use_oracle_code: true
+
+trials: 10
+num_workers: 1

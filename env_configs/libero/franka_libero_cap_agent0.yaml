@@ -1,0 +1,66 @@
+# environment config with CaP-Agent0 settings
+# Usage:
+#   uv run capx/envs/launch.py --config-path env_configs/libero/franka_libero_cap_agent0.yaml
+
+env:
+  _target_: capx.envs.tasks.franka.franka_libero_env.FrankaLiberoCodeEnv
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    low_level:
+      _target_: capx.envs.simulators.libero.FrankaLiberoEnv
+      suite_name: libero_goal_swap #libero_object_swap
+      task_id: 2 #7
+      max_steps: 8000
+      control_freq: 20
+    privileged: false
+    apis:
+      - FrankaLiberoApiReducedSkillLibrary
+    prompt: |
+      You are controlling a Franka Emika robot with API described below.
+      Goal: {libero_environment_goal}
+      You may write python code comments for reasoning but ONLY write the executable Python code and do not write it in code fences.
+      After this code executes, you will be able to get a new observation of the environment and write new code to complete the task if needed.
+      The functions (APIs) below are already imported to the environment. If you want to use numpy, you need to import it explicitly.
+
+    multi_turn_prompt: |
+      The following code blocks were just executed:
+      ```python
+      {executed_code}
+      ```
+      The current console stdout is:
+      ```
+      {console_stdout}
+      ```
+      The current console stderr is:
+      ```
+      {console_stderr}
+      ```
+      If there were no errors during compilation or execution, the console stderr will be empty. If there were errors, consider regenerating the code.
+      Please respond with EXACTLY ONE of the following:
+      - The word 'REGENERATE' followed immediately by new Python code in a fenced code block (```python...```) if you want to modify the code.
+      - The word 'FINISH' if the task appears to be complete
+
+api_servers:
+  - _target_: capx.serving.launch_pyroki_server.main
+    port: 8116
+    host: 127.0.0.1
+    robot: panda_description
+    target_link: panda_hand
+
+  - _target_: capx.serving.launch_contact_graspnet_server.main
+    port: 8115
+    host: 127.0.0.1
+
+  - _target_: capx.serving.launch_sam3_server.main
+    device: cuda
+    port: 8114
+    host: 127.0.0.1
+
+record_video: true
+output_dir: ./outputs/franka_libero_cap_agent0
+use_img_differencing: true
+use_parallel_ensemble: true
+use_multimodel: true
+
+trials: 50
+num_workers: 10

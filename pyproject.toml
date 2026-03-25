@@ -1,0 +1,215 @@
+[project]
+name = "capx"
+version = "0.1.0"
+description = "CaP-X: Code-as-Policies eXtended with RL for V(L)A code-as-action with simulators (LIBERO/robosuite/BEHAVIOR)."
+readme = "README.md"
+requires-python = ">=3.10, <3.13"
+license = { text = "MIT" }
+authors = [
+  { name = "CaP-X Authors" }
+]
+keywords = ["reinforcement-learning", "LLM", "VLM", "robotics", "VeRL", "GRPO", "PPO"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+]
+
+dependencies = [
+  "gymnasium>=0.29",
+  "numpy>=1.26",
+  "cffi==1.17.1",
+  "torch>=2.8",
+  "torchvision>=0.23",
+  "tyro>=0.8.5",
+  "pydantic>=2.7",
+  "rich>=13.7",
+  "scipy>=1.12",
+  "matplotlib>=3.10",
+  "imageio[ffmpeg]",
+  "requests",
+  "tqdm",
+  "dm_env",
+  "pyyaml",
+  "omegaconf",
+  "ruff",
+  "open3d",
+  "h5py",
+  "pyroki @ git+https://github.com/chungmin99/pyroki.git",
+  "robot_descriptions>=1.16.0",
+  "yourdfpy>=0.0.56",
+  "viser>=0.2.0",
+  "trimesh>=4.4.0",
+  "gymnasium-robotics>=1.2.4",
+  "mujoco>=3.1.6",
+  "imageio[ffmpeg]>=0.6.0",
+  "sam3",
+  "decord",
+  "pycocotools",
+  "huggingface_hub",
+  "msgpack_numpy",
+  "ray==2.48.0",
+  "mediapy>=1.2.5",
+  "uvicorn",
+  "fastapi",
+  "gunicorn",
+  "einops",
+  "transformers",
+  "openai",
+  "pyrender",
+  "opencv-python-headless",
+  "ninja>=1.13.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8",
+  "pytest-timeout>=2.3",
+  "ruff>=0.5",
+  "mypy>=1.10",
+  "pillow>=10",
+  "requests>=2.32",
+]
+
+libero = [
+  "libero",
+  "robosuite",
+  # "hydra-core==1.2.0",
+  # "numpy==1.22.4",
+  # "wandb==0.13.1",
+  "easydict==1.9",
+  # "transformers==4.21.1",
+  # "opencv-python==4.6.0.66",
+  "robomimic==0.2.0",
+  "einops==0.4.1",
+  "thop==0.1.1-2209072238",
+  "bddl==1.0.1",
+  "future==0.18.2",
+  # "matplotlib==3.5.3",
+  "cloudpickle==2.1.0",
+  "gym==0.25.2",
+]
+robosuite = [
+  "robosuite"
+]
+molmo = [
+  "torch==2.9.1",
+  "vllm==0.15.0 ; extra == 'molmo'",
+  "tensorflow", 
+  "accelerate"
+]
+curobo = [
+  "nvidia-curobo",
+  "warp-lang>=0.9.0",
+  "numpy-quaternion",
+  "scikit-image",
+]
+contactgraspnet = [
+  "contact_graspnet_pytorch",
+  "pyrender",
+  "opencv-python-headless",
+]
+ovdet = [
+  "transformers>=4.41",
+  "pillow>=10",
+  "requests>=2.32",
+]
+verl = [
+  "torch==2.8.0",
+  "vllm==0.11.0 ; extra == 'verl'",
+  "verl",
+  "datasets>=4.1.1",
+  "pyarrow>=15",
+  "flash-attn @ https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu12torch2.8cxx11abiTRUE-cp312-cp312-linux_x86_64.whl",
+  "pyarrow>=21.0.0",
+  "uvloop==0.21.0",
+]
+
+[tool.uv.sources]
+robosuite = [
+  { path = "capx/third_party/robosuite", extra = "robosuite", editable = true},
+  { path = "capx/third_party/libero_dependencies/robosuite", extra = "libero", editable = true },
+]
+libero = [
+  { path = "capx/third_party/LIBERO-PRO", extra = "libero", editable = true},
+]
+verl = { path = "capx/third_party/verl" }
+contact_graspnet_pytorch = { path = "capx/third_party/contact_graspnet_pytorch", editable = true }
+sam3 = { path = "capx/third_party/sam3", editable = true}
+nvidia-curobo = { path = "capx/third_party/curobo", editable = true}
+
+[tool.uv]
+environments = [
+    "sys_platform == 'linux' and platform_machine == 'x86_64'"
+]
+override-dependencies = [
+    "transformers<5.0",
+    "PyOpenGL==3.1.6",
+    "PyOpenGL-accelerate==3.1.6",
+    "numpy==1.26.4",
+    "opencv-python-headless<4.13",
+    "opencv-python ; sys_platform == 'never'",
+    "jax<0.4.30",
+    "jaxlib<0.4.30"
+]
+conflicts = [
+  [
+    { extra = "robosuite" },
+    { extra = "libero" },
+  ],
+    [
+    { extra = "molmo" },
+    { extra = "robosuite" },
+  ],
+  [
+    { extra = "molmo" },
+    { extra = "verl" },
+  ],
+]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["capx*"]
+exclude = ["tests*", "configs*"]
+
+[tool.uv.extra-build-dependencies]
+egl-probe = ["cmake<3.27"]
+pointnet2 = ["torch"]
+knn = ["torch"]
+flash-attn = ["torch"]
+contact-graspnet-pytorch = ["numpy"]
+nvidia-curobo = ["torch"]
+
+[tool.uv.workspace]
+members = [
+    "capx/third_party/b1k",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+select = ["E", "F", "I", "N", "UP", "B", "C4", "SIM"]
+ignore = ["N803", "UP047", "N806", "F401", "E501"]
+force-exclude = true
+extend-exclude = [
+  "capx/third_party/**",
+  "third_party/**",
+  "tests/**",
+  "scripts/**",
+  "outputs/**",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"capx/third_party/**" = ["ALL"]
+
+
+[tool.setuptools.package-data]
+"capx.envs" = [
+  "assets/ur5_pick_place/*.xml",
+  "assets/ur5_pick_place/ur5e/*.obj",
+  "assets/ur5_pick_place/robotiq_2f85/*.stl",
+]

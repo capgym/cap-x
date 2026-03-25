@@ -1,0 +1,26 @@
+[submodule "capx/third_party/LIBERO-PRO"]
+	path = capx/third_party/LIBERO-PRO
+	url = https://github.com/uynitsuj/LIBERO-PRO.git
+[submodule "capx/third_party/verl"]
+	path = capx/third_party/verl
+	url = https://github.com/Max-Fu/verl.git
+[submodule "capx/third_party/robosuite"]
+	path = capx/third_party/robosuite
+	url = https://github.com/uynitsuj/robosuite
+[submodule "capx/third_party/contact_graspnet_pytorch"]
+	path = capx/third_party/contact_graspnet_pytorch
+	url = https://github.com/uynitsuj/contact_graspnet_pytorch
+[submodule "capx/third_party/libero_dependencies/robosuite"]
+	path = capx/third_party/libero_dependencies/robosuite
+	url = https://github.com/Max-Fu/robosuite
+	branch = maxf/egl_context
+[submodule "capx/third_party/sam3"]
+	path = capx/third_party/sam3
+	url = https://github.com/Max-Fu/sam3.git
+	branch = main
+[submodule "capx/third_party/curobo"]
+	path = capx/third_party/curobo
+	url = https://github.com/NVlabs/curobo.git
+[submodule "capx/third_party/b1k"]
+	path = capx/third_party/b1k
+	url = https://github.com/qingh097/b1k.git

@@ -1,0 +1,31 @@
+# Usage: uv run hyrl/envs/launch.py --config-path env_configs/two_arm_handover/two_arm_handover.yaml
+
+env:
+  _target_: capx.envs.tasks.franka.two_arm_handover.TwoArmHandoverCodeEnv
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    low_level: two_arm_handover_robosuite 
+    apis:
+      - FrankaHandoverApi
+    # prompt is inherited from TwoArmHandoverCodeEnv class default
+
+api_servers:
+  - _target_: capx.serving.launch_sam3_server.main
+    device: cuda
+    port: 8114
+    host: 127.0.0.1
+  
+  - _target_: capx.serving.launch_pyroki_server.main
+    port: 8116
+    host: 127.0.0.1
+    robot: panda_description
+    target_link: panda_hand
+
+record_video: true
+output_dir: ./outputs/two_arm_handover_unprivileged
+
+trials: 100
+num_workers: 5
+use_oracle_code: false  
+
+

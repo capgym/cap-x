@@ -1,0 +1,70 @@
+# Usage: uv run hyrl/envs/launch.py --config-path env_configs/human_oracle_code/franka_robosuite_two_arm_lift_oracle.yaml
+
+env:
+  _target_: capx.envs.tasks.franka.two_arm_lift.TwoArmLiftCodeEnv
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    low_level: two_arm_lift_robosuite  # Registry name for low-level env
+    apis:
+      - FrankaTwoArmLiftApi
+    prompt: |
+      You are controlling a two-arm Franka Emika robot system with API described below.
+      Goal: The two arms should coordinate to lift a pot. Arm 0 should grasp handle 0, and Arm 1 should grasp handle 1. Then both arms should lift the pot up at the same height.
+
+      Available API Functions:
+      - `get_pot_pose()` -> (position: np.ndarray, quaternion_wxyz: np.ndarray, bbox_center: np.ndarray): Get the pose of the pot body.
+      - `get_handle0_pos()` -> bbox_center: np.ndarray: Get the bounding box center position of handle 0.
+      - `get_handle1_pos()` -> bbox_center: np.ndarray: Get the bounding box center position of handle 1.
+      - `get_arm0_gripper_pose()` -> (position: np.ndarray, quaternion_wxyz: np.ndarray): Get the current pose of arm 0's gripper.
+      - `get_arm1_gripper_pose()` -> (position: np.ndarray, quaternion_wxyz: np.ndarray): Get the current pose of arm 1's gripper.
+      - `goto_pose_arm0(position: np.ndarray, quaternion_wxyz: np.ndarray, z_approach: float = 0.0) -> None`: Move arm 0 to a target pose.
+      - `goto_pose_arm1(position: np.ndarray, quaternion_wxyz: np.ndarray, z_approach: float = 0.0) -> None`: Move arm 1 to a target pose.
+      - `goto_pose_both(position0: np.ndarray, quaternion_wxyz0: np.ndarray, position1: np.ndarray, quaternion_wxyz1: np.ndarray, z_approach: float = 0.0) -> None`: Move both arms simultaneously to target poses.
+      - `open_gripper_arm0() -> None`: Open arm 0's gripper fully.
+      - `close_gripper_arm0() -> None`: Close arm 0's gripper fully.
+      - `open_gripper_arm1() -> None`: Open arm 1's gripper fully.
+      - `close_gripper_arm1() -> None`: Close arm 1's gripper fully.
+
+      Guidance:
+      - The pot has two handles.
+      - Use `get_handle0_pos()` to get the bounding box center position of handle 0 (returns a single 3D array).
+      - Use `get_handle1_pos()` to get the bounding box center position of handle 1 (returns a single 3D array).
+      - Approach the handles from above using a top-down grasp.
+      - Appropriate quaternion for top-down grasp is [0, 1, 0, 0] (WXYZ).
+      - Coordinate system: All pose functions accept/return positions in robot0's base frame.
+      - To lift the pot, you MUST use `goto_pose_both` to move both arms simultaneously.
+      - The `z_approach` parameter allows you to approach from above (positive) or below (negative) before reaching the final pose.
+
+      You may write python code comments for reasoning but ONLY write the executable Python code and do not write it in code fences.
+      The functions (APIs) above are already imported to the environment. If you want to use numpy, you need to import it explicitly.
+
+
+api_servers:
+  - _target_: capx.serving.launch_owlvit_server.main
+    device: cuda
+    port: 8117
+    host: 127.0.0.1
+    model_name: google/owlv2-large-patch14-ensemble
+    
+  - _target_: capx.serving.launch_sam2_server.main
+    device: cuda
+    port: 8113
+    host: 127.0.0.1
+    model_name: facebook/sam2.1-hiera-large
+    
+  - _target_: capx.serving.launch_contact_graspnet_server.main
+    port: 8115
+    host: 127.0.0.1
+    
+  - _target_: capx.serving.launch_pyroki_server.main
+    port: 8116
+    host: 127.0.0.1
+    robot: panda_description
+    target_link: panda_hand
+
+record_video: true
+output_dir: ./outputs/two_arm_lift_code_exec_oracle
+
+trials: 100
+num_workers: 10
+use_oracle_code: true

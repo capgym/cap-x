@@ -1,0 +1,58 @@
+# Usage: uv run capx/envs/launch.py --config-path env_configs/human_oracle_code/libero/franka_libero_object_swap_7_oracle.yaml
+
+env:
+  _target_: capx.envs.tasks.franka.franka_libero_env.FrankaLiberoCodeEnv
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    apis:
+      - FrankaLiberoApi
+    low_level:
+      _target_: capx.envs.simulators.libero.FrankaLiberoEnv
+      suite_name: libero_object_swap
+      task_id: 7
+    privileged: false
+    # Write your oracle code here!
+    oracle_code: |
+        import numpy as np
+        import viser.transforms as vtf
+        use_multiview = True
+
+        object_name = "milk carton"
+        target_name = "woven basket"
+        
+        open_gripper()
+        grasp_pos, grasp_quat = sample_grasp_pose(object_name, use_multiview=use_multiview)
+        
+        # grasp_quat = np.array([0.0, 1.0, 0.0, 0.0])
+        goto_pose(grasp_pos, grasp_quat, z_approach=0.1)
+        close_gripper()
+        goto_pose(grasp_pos+np.array([0.0, 0.0, 0.2]), grasp_quat)
+
+        basket_pos, basket_quat = get_object_pose(target_name, use_multiview=use_multiview)
+        basket_quat = np.array([0.0, 1.0, 0.0, 0.0])
+        goto_pose(basket_pos, basket_quat, z_approach=0.1)
+        open_gripper()
+      
+    
+api_servers:
+  - _target_: capx.serving.launch_pyroki_server.main
+    port: 8116
+    host: 127.0.0.1
+    robot: panda_description
+    target_link: panda_hand
+
+  - _target_: capx.serving.launch_contact_graspnet_server.main
+    port: 8115
+    host: 127.0.0.1
+
+  - _target_: capx.serving.launch_sam3_server.main
+    device: cuda
+    port: 8114
+    host: 127.0.0.1
+
+record_video: true
+output_dir: ./outputs/franka_libero_object_swap_7_oracle
+use_oracle_code: true
+
+trials: 10
+num_workers: 1

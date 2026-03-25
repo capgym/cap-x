@@ -1,0 +1,84 @@
+# Usage: uv run hyrl/envs/launch.py --config-path env_configs/cube_restack/hillclimb/debug_ensemble_franka_robosuite_cube_restack_multiturn_vdm_reduced_api_skill_lib.yaml
+
+env:
+  _target_: capx.envs.tasks.franka.franka_pick_place.FrankaPickPlaceCodeEnv
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    low_level: franka_robosuite_cubes_restack_low_level
+    privileged: false
+    apis:
+      - FrankaControlApiReducedSkillLibrary
+    prompt: |
+      You are controlling a Franka Emika robot with API described below.
+      Goal: place the red cube on top of the green cube and then open the gripper.
+      You may write python code comments for reasoning but ONLY write the executable Python code and do not write it in code fences.
+      After this code executes, you will receive the current console stdout and stderr (any errors or print statements made in the code). You will then have the chance to write new code to query the environment state and/or complete the task.
+      The functions (APIs) below are already imported to the environment. If you want to use numpy, you need to import it explicitly.
+    
+    multi_turn_prompt: |
+      You are acting as experienced debugger and task completion verifier. You will make no assumptions without explicit evidence.
+      Your task is to determine whether the program has actually completed the intended task, and to fix all bugs if any exist.
+      You can treat the observed differences between the current and previous state of the environment that are provided to you as a source of evidence, but they are not guaranteed to be accurate.
+
+      The following code blocks have been executed so far:
+      ```python
+      {executed_code}
+      ```
+      The current console stdout from the most recent code execution is:
+      ```
+      {console_stdout}
+      ```
+      The current console stderr from the most recent code execution is:
+      ```
+      {console_stderr}
+      ```
+
+      Do NOT trust printed outputs or logs blindly.
+
+      Proceed as follows to verify task completion:
+      1. Line-by-line inspect the executed code
+      2. Cross-check the code's behavior against the console stdout and stderr
+      3. Identify explicit, concrete evidence that each required step of the task was completed
+      4. Treat missing evidence, implicit assumptions, or partial signals as failure
+
+      Decision Rules:
+      - If the task is verifiably complete, respond with the single word 'FINISH'.
+      - If the task is not verifiably complete:
+        1. Identify specific bugs, failures, missing steps, or incorrect assumptions.
+        2. Explain why each issue prevents task completion, citing evidence from stdout, stderr, or code behavior.
+        3. If the same approach has been attempted multiple times without success, you MUST try a fundamentally different strategy.
+        4. Brainstorm multiple strategies to fix or verify these issues in the next code generation.
+        5. Synthesize your brainstorming into a single improved Python program that addresses all identified issues and verifiably completes the task.
+        6. Respond with the single word 'REGENERATE' followed immediately by new Python code in a fenced code block (```python...```)
+      
+      If you choose to regenerate code, you must include your reasoning process only AS COMMENTS at the start of the code explaining:
+      - What strategies/APIs have already been tried and why they were insufficient
+      - How your solution effectively addresses the identified issues
+
+      To reiterate, you must only respond with EXACTLY ONE of the following:
+      - The word 'FINISH' if you decide to stop generating code
+      - The word 'REGENERATE' followed immediately by new Python code in a SINGLE fenced code block (```python...```).
+
+api_servers:
+  - _target_: capx.serving.launch_sam3_server.main
+    device: cuda
+    port: 8114
+    host: 127.0.0.1
+    
+  - _target_: capx.serving.launch_contact_graspnet_server.main
+    port: 8115
+    host: 127.0.0.1
+
+  - _target_: capx.serving.launch_pyroki_server.main
+    port: 8116
+    host: 127.0.0.1
+    robot: panda_description
+    target_link: panda_hand
+
+record_video: true
+use_img_differencing: true
+use_parallel_ensemble: true
+output_dir: ./outputs/debug_ensemble_franka_robosuite_cube_restack_multiturn_vdm_reduced_api_skill_lib
+
+trials: 100
+num_workers: 5

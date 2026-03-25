@@ -1,0 +1,61 @@
+# Usage: uv run hyrl/envs/launch.py --config-path env_configs/nut_assembly/franka_robosuite_nut_assembly_multiturn_vdm_reduced_api_skill_lib.yaml
+
+env:
+  _target_: capx.envs.tasks.franka.franka_nut_assembly.FrankaNutAssemblyCodeEnv
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    low_level: franka_robosuite_nut_assembly_low_level_visual  # Use Robosuite instead of MuJoCo!
+    privileged: true
+    apis:
+      - FrankaControlApiReducedSkillLibrary
+    prompt: |
+      You are controlling a Franka Emika robot with API described below.
+      Goal: grasp and insert the `brown square nut` onto the `brown square block`.
+      Note that you would grasp the nut by its handle. You can try language query `extruded handle of the brown square nut` to get a good grasp at the handle.
+      The brown square nut and the extruded handle of the brown square nut are part of the same rigid body.
+      The grasp pose query for 'extruded handle of the brown square nut' returns an end-effector pose expressed in world frame, located on the handle region.
+      The nut's object center pose obtained via 'white hollow center of the brown square nut' and the handle grasp pose obtained via 'extruded handle of the brown square nut' have a fixed rigid transform, which must be applied correctly when inserting the nut onto the peg.
+      You may write python code comments for reasoning but ONLY write the executable Python code and do not write it in code fences.
+      The functions (APIs) below are already imported to the environment. 
+      If you want to use numpy, or scipy for spatial transformations, you need to import it explicitly.
+    multi_turn_prompt: |
+      The following code blocks were just executed:
+      ```python
+      {executed_code}
+      ```
+      The current console stdout is:
+      ```
+      {console_stdout}
+      ```
+      The current console stderr is:
+      ```
+      {console_stderr}
+      ```
+      If there were no errors during compilation or execution, the console stderr will be empty. If there were errors, consider regenerating the code.
+      Consider querying the environment state through perception-based tool calls and prints to see if the task is completed.
+      Please respond with EXACTLY ONE of the following:
+      - The word 'REGENERATE' followed immediately by new Python code in a fenced code block (```python...```) if you want to modify the code.
+      - The word 'FINISH' if the task appears to be complete
+
+api_servers:
+  - _target_: capx.serving.launch_pyroki_server.main
+    port: 8116
+    host: 127.0.0.1
+    robot: panda_description
+    target_link: panda_hand
+
+  - _target_: capx.serving.launch_contact_graspnet_server.main
+    port: 8115
+    host: 127.0.0.1
+
+  - _target_: capx.serving.launch_sam3_server.main
+    device: cuda
+    port: 8114
+    host: 127.0.0.1
+
+record_video: true
+# output_dir: ./outputs/franka_robosuite_nut_assembly_non_privileged_oracle_100trials
+output_dir: ./outputs/franka_robosuite_nut_assembly_multiturn_vdm_reduced_api_skill_lib
+use_img_differencing: true
+trials: 100
+num_workers: 12

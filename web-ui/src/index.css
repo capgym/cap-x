@@ -1,0 +1,116 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: 'Inter', system-ui, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color: #F0EBE4;
+  background-color: #2B2520;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+#root {
+  height: 100vh;
+  width: 100vw;
+}
+
+/* Custom scrollbar — dark warm palette */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #524A42;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #6B6158;
+}
+
+/* Code block styling — warm dark */
+.hljs {
+  background: #231E1A !important;
+  color: #E0D8CD !important;
+  padding: 1rem !important;
+  border-radius: 0 !important;
+  overflow-x: auto !important;
+}
+
+/* Thinking section */
+details summary {
+  cursor: pointer;
+  user-select: none;
+}
+
+details summary::-webkit-details-marker {
+  display: none;
+}
+
+details summary::before {
+  content: '>';
+  display: inline-block;
+  margin-right: 0.5rem;
+  transition: transform 0.2s;
+}
+
+details[open] summary::before {
+  transform: rotate(90deg);
+}
+
+/* Fade-in animation for messages */
+.msg-enter {
+  animation: msgFadeIn 0.3s ease-out;
+}
+
+@keyframes msgFadeIn {
+  0% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+/* Prose overrides for dark warm theme */
+.prose-warm {
+  --tw-prose-body: #F0EBE4;
+  --tw-prose-headings: #F0EBE4;
+  --tw-prose-links: #D4845A;
+  --tw-prose-bold: #F0EBE4;
+  --tw-prose-code: #D4845A;
+}
+
+/* Resizer handle */
+.resize-handle {
+  cursor: col-resize;
+  transition: background-color 0.15s;
+}
+
+.resize-handle:hover,
+.resize-handle:active {
+  background-color: #D4845A;
+}

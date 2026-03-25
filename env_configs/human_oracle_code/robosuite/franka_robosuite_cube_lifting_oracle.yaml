@@ -1,0 +1,18 @@
+# Usage: uv run hyrl/envs/launch.py --config-path env_configs/human_oracle_code/franka_robosuite_cube_lifting_oracle.yaml
+
+env:
+  _target_: capx.envs.tasks.franka.franka_lift.FrankaLiftCodeEnv
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    low_level: franka_robosuite_cube_lift_low_level  
+    privileged: false
+    apis:
+      - FrankaControlApiSam3
+    # prompt is inherited from FrankaLiftCodeEnv class default
+
+record_video: true
+output_dir: ./outputs/franka_robosuite_cube_lifting_oracle
+
+trials: 100
+num_workers: 7
+use_oracle_code: true

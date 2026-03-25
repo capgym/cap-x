@@ -1,0 +1,24 @@
+# Usage: uv run hyrl/envs/launch.py --config-path env_configs/spill_wipe/franka_robosuite_spill_wipe_privileged.yaml
+
+env:
+  _target_: capx.envs.tasks.franka.franka_spill_wipe.FrankaSpillWipeCodeEnv
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    low_level: franka_robosuite_spill_wipe_low_level
+    privileged: true
+    apis:
+      - FrankaControlSpillWipePrivilegedApi
+    # prompt is inherited from FrankaSpillWipeCodeEnv class default
+
+api_servers:
+  - _target_: capx.serving.launch_pyroki_server.main
+    port: 8116
+    host: 127.0.0.1
+    robot: panda_description
+    target_link: panda_hand
+    
+record_video: true
+output_dir: ./outputs/franka_robosuite_spill_wipe_privileged
+
+trials: 100
+num_workers: 12

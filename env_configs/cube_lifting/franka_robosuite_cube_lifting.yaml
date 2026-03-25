@@ -1,0 +1,33 @@
+# Usage: uv run hyrl/envs/launch.py --config-path env_configs/cube_lifting/franka_robosuite_cube_lifting.yaml
+
+env:
+  _target_: capx.envs.tasks.franka.franka_lift.FrankaLiftCodeEnv
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    low_level: franka_robosuite_cube_lift_low_level  
+    privileged: false
+    apis:
+      - FrankaControlApi
+    # prompt is inherited from FrankaLiftCodeEnv class default
+
+api_servers:
+  - _target_: capx.serving.launch_sam3_server.main
+    device: cuda
+    port: 8114
+    host: 127.0.0.1
+    
+  - _target_: capx.serving.launch_contact_graspnet_server.main
+    port: 8115
+    host: 127.0.0.1
+    
+  - _target_: capx.serving.launch_pyroki_server.main
+    port: 8116
+    host: 127.0.0.1
+    robot: panda_description
+    target_link: panda_hand
+    
+record_video: true
+output_dir: ./outputs/franka_robosuite_cube_lifting
+
+trials: 100
+num_workers: 12
