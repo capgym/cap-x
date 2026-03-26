@@ -185,7 +185,7 @@ contact-graspnet-pytorch = ["numpy"]
 nvidia-curobo = ["torch"]
 
 [tool.uv.workspace]
-members = [
+exclude = [
     "capx/third_party/b1k",
 ]
 

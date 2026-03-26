@@ -21,10 +21,6 @@ conflicts = [[
 ]]
 
 [manifest]
-members = [
-    "b1k",
-    "capx",
-]
 overrides = [
     { name = "jax", specifier = "<0.4.30" },
     { name = "jaxlib", specifier = "<0.4.30" },
@@ -312,11 +308,6 @@ wheels = [
 ]
 
 [[package]]
-name = "b1k"
-version = "0.1.0"
-source = { virtual = "capx/third_party/b1k" }
-
-[[package]]
 name = "bddl"
 version = "1.0.1"
 source = { registry = "https://pypi.org/simple" }
@@ -496,7 +487,7 @@ robosuite = [
 ]
 verl = [
     { name = "datasets", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-4-capx-libero' and extra == 'extra-4-capx-robosuite') or (sys_platform != 'linux' and extra == 'extra-4-capx-libero' and extra == 'extra-4-capx-robosuite')" },
-    { name = "flash-attn", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-4-capx-libero' and extra == 'extra-4-capx-robosuite') or (sys_platform != 'linux' and extra == 'extra-4-capx-libero' and extra == 'extra-4-capx-robosuite')" },
+    { name = "flash-attn", marker = "(python_full_version >= '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux') or (python_full_version < '3.12' and extra == 'extra-4-capx-libero' and extra == 'extra-4-capx-robosuite') or (platform_machine != 'x86_64' and extra == 'extra-4-capx-libero' and extra == 'extra-4-capx-robosuite') or (sys_platform != 'linux' and extra == 'extra-4-capx-libero' and extra == 'extra-4-capx-robosuite')" },
     { name = "pyarrow", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-4-capx-libero' and extra == 'extra-4-capx-robosuite') or (sys_platform != 'linux' and extra == 'extra-4-capx-libero' and extra == 'extra-4-capx-robosuite')" },
     { name = "torch", version = "2.8.0", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-4-capx-libero' and extra == 'extra-4-capx-robosuite') or (sys_platform != 'linux' and extra == 'extra-4-capx-libero' and extra == 'extra-4-capx-robosuite')" },
     { name = "uvloop", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-4-capx-libero' and extra == 'extra-4-capx-robosuite') or (sys_platform != 'linux' and extra == 'extra-4-capx-libero' and extra == 'extra-4-capx-robosuite')" },
@@ -1580,9 +1571,9 @@ name = "flash-attn"
 version = "2.8.3"
 source = { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu12torch2.8cxx11abiTRUE-cp312-cp312-linux_x86_64.whl" }
 dependencies = [
-    { name = "einops", version = "0.4.1", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'extra-4-capx-libero' and extra == 'extra-4-capx-verl') or (platform_machine != 'x86_64' and extra == 'extra-4-capx-molmo' and extra == 'extra-4-capx-verl') or (sys_platform != 'linux' and extra == 'extra-4-capx-molmo' and extra == 'extra-4-capx-verl') or (extra == 'extra-4-capx-libero' and extra == 'extra-4-capx-robosuite') or (extra == 'extra-4-capx-molmo' and extra == 'extra-4-capx-robosuite') or (extra != 'extra-4-capx-libero' and extra == 'extra-4-capx-molmo' and extra == 'extra-4-capx-verl')" },
-    { name = "einops", version = "0.8.2", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-4-capx-libero' and extra == 'extra-4-capx-verl') or (extra == 'extra-4-capx-libero' and extra == 'extra-4-capx-robosuite') or (extra == 'extra-4-capx-molmo' and extra == 'extra-4-capx-robosuite') or (extra == 'extra-4-capx-molmo' and extra == 'extra-4-capx-verl')" },
-    { name = "torch", version = "2.8.0", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-4-capx-libero' and extra == 'extra-4-capx-robosuite') or (sys_platform != 'linux' and extra == 'extra-4-capx-libero' and extra == 'extra-4-capx-robosuite')" },
+    { name = "einops", version = "0.4.1", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'extra-4-capx-libero' and extra == 'extra-4-capx-verl') or (python_full_version < '3.12' and extra == 'extra-4-capx-molmo' and extra == 'extra-4-capx-verl') or (platform_machine != 'x86_64' and extra == 'extra-4-capx-molmo' and extra == 'extra-4-capx-verl') or (sys_platform != 'linux' and extra == 'extra-4-capx-molmo' and extra == 'extra-4-capx-verl') or (extra == 'extra-4-capx-libero' and extra == 'extra-4-capx-robosuite') or (extra == 'extra-4-capx-molmo' and extra == 'extra-4-capx-robosuite') or (extra != 'extra-4-capx-libero' and extra == 'extra-4-capx-molmo' and extra == 'extra-4-capx-verl')" },
+    { name = "einops", version = "0.8.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-4-capx-libero' and extra == 'extra-4-capx-verl') or (extra == 'extra-4-capx-libero' and extra == 'extra-4-capx-robosuite') or (extra == 'extra-4-capx-molmo' and extra == 'extra-4-capx-robosuite') or (extra == 'extra-4-capx-molmo' and extra == 'extra-4-capx-verl')" },
+    { name = "torch", version = "2.8.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux') or (python_full_version < '3.12' and extra == 'extra-4-capx-libero' and extra == 'extra-4-capx-robosuite') or (platform_machine != 'x86_64' and extra == 'extra-4-capx-libero' and extra == 'extra-4-capx-robosuite') or (sys_platform != 'linux' and extra == 'extra-4-capx-libero' and extra == 'extra-4-capx-robosuite')" },
 ]
 wheels = [
     { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu12torch2.8cxx11abiTRUE-cp312-cp312-linux_x86_64.whl", hash = "sha256:f25da18657a87fc83dc1bfb8b7751b82246e9db355510226b674fd437c34b5fb" },
