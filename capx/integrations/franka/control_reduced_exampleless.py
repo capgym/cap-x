@@ -1,6 +1,6 @@
-"""Exampleless variant of FrankaControlApiReducedSam3.
+"""Exampleless variant of FrankaControlApiReduced.
 
-Functionally identical to FrankaControlApiReducedSam3 but strips usage
+Functionally identical to FrankaControlApiReduced but strips usage
 examples from docstrings exposed via ``combined_doc()``.
 """
 
@@ -8,7 +8,7 @@ import inspect
 from typing import Any
 
 from capx.envs.base import BaseEnv
-from capx.integrations.franka.control_reduced_sam3 import FrankaControlApiReducedSam3
+from capx.integrations.franka.control_reduced import FrankaControlApiReduced
 
 
 def _strip_examples(doc: str | None) -> str:
@@ -37,8 +37,8 @@ def _strip_examples(doc: str | None) -> str:
     return "\n".join(out)
 
 
-class FrankaControlApiReducedSam3Exampleless(FrankaControlApiReducedSam3):
-    """FrankaControlApiReducedSam3 without usage examples in docstrings."""
+class FrankaControlApiReducedExampleless(FrankaControlApiReduced):
+    """FrankaControlApiReduced without usage examples in docstrings."""
 
     def __init__(
         self,

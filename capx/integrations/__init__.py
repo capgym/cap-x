@@ -1,11 +1,8 @@
 from .base_api import list_apis, register_api
 from .franka.control import FrankaControlApi
 from .franka.control_reduced import FrankaControlApiReduced
-
-from .franka.control_reduced_sam3 import FrankaControlApiReducedSam3
 from .franka.control_reduced_skill_library import FrankaControlApiReducedSkillLibrary
-
-from .franka.control_reduced_sam3_exampleless import FrankaControlApiReducedSam3Exampleless
+from .franka.control_reduced_exampleless import FrankaControlApiReducedExampleless
 from .franka.nut_assembly_privileged import FrankaControlNutAssemblyPrivilegedApi
 from .franka.nut_assembly_visual import FrankaControlNutAssemblyVisualApi
 from .franka.privileged import FrankaControlPrivilegedApi
@@ -29,24 +26,24 @@ from .franka.two_arm_lift_privileged import FrankaTwoArmLiftPrivilegedApi
 
 register_api("FrankaControlPrivilegedApi", FrankaControlPrivilegedApi)
 register_api("FrankaControlApi", lambda env: FrankaControlApi(env, use_sam3=True))
-register_api("FrankaControlApiReduced", FrankaControlApiReducedSam3)
+register_api("FrankaControlApiReduced", FrankaControlApiReduced)
 register_api(
-    "FrankaControlApiReducedBimanual", lambda env: FrankaControlApiReducedSam3(env, bimanual=True)
+    "FrankaControlApiReducedBimanual", lambda env: FrankaControlApiReduced(env, bimanual=True)
 )
 register_api(
-    "FrankaControlApiReducedExamplelessBimanual", lambda env: FrankaControlApiReducedSam3Exampleless(env, bimanual=True)
+    "FrankaControlApiReducedExamplelessBimanual", lambda env: FrankaControlApiReducedExampleless(env, bimanual=True)
 )
 register_api(
-    "FrankaControlApiReducedBimanualHandover", lambda env: FrankaControlApiReducedSam3(env, bimanual=True, is_handover=True)
+    "FrankaControlApiReducedBimanualHandover", lambda env: FrankaControlApiReduced(env, bimanual=True, is_handover=True)
 )
 register_api(
-    "FrankaControlApiReducedExamplelessBimanualHandover", lambda env: FrankaControlApiReducedSam3Exampleless(env, bimanual=True, is_handover=True)
+    "FrankaControlApiReducedExamplelessBimanualHandover", lambda env: FrankaControlApiReducedExampleless(env, bimanual=True, is_handover=True)
 )
 register_api(
     "FrankaControlApiReducedSpillWipe",
-    lambda env: FrankaControlApiReducedSam3(env, tcp_offset=[0.0, 0.0, -0.0158]),
+    lambda env: FrankaControlApiReduced(env, tcp_offset=[0.0, 0.0, -0.0158]),
 )
-register_api("FrankaControlApiReducedExampleless", FrankaControlApiReducedSam3Exampleless)
+register_api("FrankaControlApiReducedExampleless", FrankaControlApiReducedExampleless)
 
 register_api("FrankaControlApiReducedSkillLibrary", FrankaControlApiReducedSkillLibrary)
 register_api(
@@ -68,7 +65,7 @@ register_api(
 )
 register_api(
     "FrankaControlSpillWipeApiReduced",
-    lambda env: FrankaControlApiReducedSam3(
+    lambda env: FrankaControlApiReduced(
         env, tcp_offset=[0.0, 0.0, -0.0158], is_spill_wipe=True
     ),
 )
@@ -78,7 +75,7 @@ register_api(
 )
 register_api(
     "FrankaControlSpillWipeApiReducedExampleless",
-    lambda env: FrankaControlApiReducedSam3Exampleless(
+    lambda env: FrankaControlApiReducedExampleless(
         env, tcp_offset=[0.0, 0.0, -0.0158], is_spill_wipe=True
     ),
 )
@@ -96,11 +93,11 @@ register_api("FrankaControlNutAssemblyPrivilegedApi", FrankaControlNutAssemblyPr
 register_api("FrankaControlNutAssemblyVisualApi", FrankaControlNutAssemblyVisualApi)
 register_api(
     "FrankaControlNutAssemblyApiReduced",
-    lambda env: FrankaControlApiReducedSam3(env, is_peg_assembly=True),
+    lambda env: FrankaControlApiReduced(env, is_peg_assembly=True),
 )
 register_api(
     "FrankaControlNutAssemblyApiReducedExampleless",
-    lambda env: FrankaControlApiReducedSam3Exampleless(env, is_peg_assembly=True),
+    lambda env: FrankaControlApiReducedExampleless(env, is_peg_assembly=True),
 )
 # Register multi-turn variant with multi_turn=True
 register_api(

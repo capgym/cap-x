@@ -14,7 +14,7 @@ from capx.envs.base import (
 )
 from capx.integrations.motion import pyroki_snippets as pks  # type: ignore
 from capx.integrations.base_api import ApiBase
-from capx.integrations.franka.control_reduced_sam3 import FrankaControlApiReducedSam3
+from capx.integrations.franka.control_reduced import FrankaControlApiReduced
 from capx.integrations.vision.graspnet import init_contact_graspnet
 from capx.integrations.vision.molmo import init_molmo
 from capx.integrations.motion.pyroki import init_pyroki
@@ -29,7 +29,7 @@ from capx.utils.depth_utils import depth_color_to_pointcloud, depth_to_pointclou
 
 
 # ------------------------------- Control API ------------------------------
-class FrankaControlApiReducedSkillLibrary(FrankaControlApiReducedSam3):
+class FrankaControlApiReducedSkillLibrary(FrankaControlApiReduced):
     """
     Robot control helpers for Franka.
     """
