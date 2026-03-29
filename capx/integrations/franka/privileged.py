@@ -25,7 +25,6 @@ class FrankaControlPrivilegedApi(ApiBase):
       - goto_pose(position: np.ndarray, quaternion_wxyz: np.ndarray, z_approach: float = 0.0) -> None
       - open_gripper() -> None
       - close_gripper() -> None
-      - home_pose() -> None
     """
 
     _TCP_OFFSET = np.array([0.0, 0.0, -0.107], dtype=np.float64)
@@ -51,7 +50,7 @@ class FrankaControlPrivilegedApi(ApiBase):
             "goto_pose": self.goto_pose,
             "open_gripper": self.open_gripper,
             "close_gripper": self.close_gripper,
-            "home_pose": self.home_pose,
+            # "home_pose": self.home_pose,
         }
         # if self.multi_turn:
         #     base_functions["breakpoint_code_block"] = self.breakpoint_code_block

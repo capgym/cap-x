@@ -10,8 +10,8 @@ The functions (APIs) below are already imported to the environment. If you want 
 ORACLE_CODE = """
 import numpy as np
 
-# Move to a safe starting pose
-home_pose()
+# Start with gripper open
+open_gripper()
 
 _, _, green_ext = get_object_pose("green cube", return_bbox_extent=True)
 _, _, red_ext = get_object_pose("red cube", return_bbox_extent=True)
