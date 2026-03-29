@@ -82,10 +82,8 @@ See [libero-tasks.md](libero-tasks.md) for the full task reference.
 BEHAVIOR tasks require NVIDIA Isaac Sim and OmniGibson. Use the provided install script:
 
 ```bash
-# Clone the BEHAVIOR-1K submodule (hosted separately)
-
 cd capx/third_party/b1k
-./uv_install.sh --dataset
+./uv_install.sh --dataset --accept-dataset-tos
 cd ../../..
 ```
 
@@ -95,14 +93,27 @@ This installs:
 - **Isaac Sim 4.5.0** (downloaded as pip wheels from pypi.nvidia.com)
 - **cuRobo** (GPU-accelerated motion planning, from StanfordVL fork)
 - **PyRoKi** (IK solver)
+- **SAM3 + ContactGraspNet dependencies** (perception server runtime deps)
 - **Datasets** (robot assets, BEHAVIOR-1K assets, 2025 challenge task instances)
 
 The script also fixes the known websockets conflict with Isaac Sim extscache.
 
+### Post-install fix: cuRobo JIT headers
+
+After running `uv_install.sh`, copy the cuRobo CUDA JIT headers (required for first-run kernel compilation). Run with the b1k venv active:
+
+```bash
+source capx/third_party/b1k/.venv/bin/activate
+cp capx/third_party/curobo/src/curobo/curobolib/cpp/*.h \
+   $(python -c "import sysconfig; print(sysconfig.get_path('purelib'))")/curobo/curobolib/cpp/
+```
+
+> **Note:** On first run, cuRobo JIT-compiles CUDA kernels (3–5 min). Isaac Sim also does initial shader compilation on first run, adding another ~3 min to startup.
+
 ### Prerequisites
 
 - Python 3.10 (Isaac Sim wheels are cp310-only)
-- NVIDIA GPU with CUDA 12.x
+- NVIDIA GPU with CUDA 12.x (driver 550+)
 - `libegl1` and `libgl1` for headless rendering (see above)
 
 ### Environment variables
@@ -110,6 +121,7 @@ The script also fixes the known websockets conflict with Isaac Sim extscache.
 For headless (no display) servers, set before running:
 ```bash
 export OMNI_KIT_ACCEPT_EULA=YES
+export OMNIGIBSON_HEADLESS=1
 ```
 
 See [behavior-tasks.md](behavior-tasks.md) for task configs and expected baselines.

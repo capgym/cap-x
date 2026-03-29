@@ -90,7 +90,7 @@ Override these key environment variables for training on different tasks and mod
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `MODEL_PATH` | `Qwen/Qwen2.5-Coder-7B-Instruct` | HuggingFace model ID or local path |
-| `DATA_ROOT` | `$HOME/data/hyrl/franka` | Output directory for dataset and checkpoints |
+| `DATA_ROOT` | `$HOME/data/capx/franka` | Output directory for dataset and checkpoints |
 | `DATA_SOURCE` | `franka_pick_place_code_env` | Environment name (see [Available Tasks](#available-tasks)) |
 | `N_GPUS` | auto-detected | Number of GPUs to use |
 | `GROUP_SIZE` | `15` | GRPO group size (rollouts per prompt) |
@@ -110,7 +110,7 @@ Evaluation requires three steps: merge distributed checkpoints, serve the model,
 After training, GRPO saves FSDP-sharded checkpoints. Merge them into a standard Hugging Face format:
 
 ```bash
-# Checkpoints are saved under DATA_ROOT/checkpoints/hyrl/<experiment_name>/
+# Checkpoints are saved under DATA_ROOT/checkpoints/capx/<experiment_name>/
 export CKPT_PATH=<path-to-global_step_N/actor>
 export TARGET_DIR=${CKPT_PATH%/actor}/hf_checkpoint
 

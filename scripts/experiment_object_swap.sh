@@ -3,7 +3,7 @@
 # with the improved prompt config.
 set -e
 
-cd /home/gear/HyRL-main-regression
+cd "$(git rev-parse --show-toplevel)"
 
 # Activate the LIBERO venv
 source .venv-libero/bin/activate

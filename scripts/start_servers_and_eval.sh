@@ -3,7 +3,7 @@
 # Usage: bash scripts/start_servers_and_eval.sh [--workers N] [--suites SUITE1,SUITE2,...]
 set -e
 
-cd /home/gear/HyRL-main-regression
+cd "$(git rev-parse --show-toplevel)"
 mkdir -p logs
 
 NUM_WORKERS=${1:-4}

@@ -132,7 +132,7 @@ def create_app() -> FastAPI:
             class MinimalArgs:
                 config_path: str
                 server_url: str = "http://127.0.0.1:8110/chat/completions"
-                model: str = "aws/anthropic/claude-opus-4-5"
+                model: str = "google/gemini-3.1-pro-preview"
                 temperature: float = 1.0
                 max_tokens: int = 20480
                 reasoning_effort: str = "medium"

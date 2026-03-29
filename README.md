@@ -36,7 +36,7 @@ Shankar Sastry<sup>2</sup>, Yuke Zhu<sup>1</sup>, Ken Goldberg<sup>&dagger;,2</s
 CaP-X uses [uv](https://docs.astral.sh/uv/) for dependency management. Requires **Python 3.10** and a **CUDA-capable GPU**.
 
 ```bash
-git clone --recurse-submodules https://github.com/capgym/cap-x && cd CaP-X
+git clone --recurse-submodules https://github.com/capgym/cap-x && cd cap-x
 
 # Or if already cloned without --recurse-submodules:
 git submodule update --init --recursive
@@ -81,7 +81,8 @@ cd capx/third_party/b1k
 ./uv_install.sh --dataset          # installs OmniGibson, Isaac Sim, BDDL, cuRobo, and downloads assets
 cd ../../..                        # back to repo root
 
-# Post-install fixes — copy cuRobo JIT headers to site-packages
+# Post-install fix — copy cuRobo JIT headers (run with b1k venv active)
+source capx/third_party/b1k/.venv/bin/activate
 cp capx/third_party/curobo/src/curobo/curobolib/cpp/*.h \
    $(python -c "import sysconfig; print(sysconfig.get_path('purelib'))")/curobo/curobolib/cpp/
 ```
@@ -110,6 +111,8 @@ uv sync --extra curobo           # cuRobo GPU-accelerated IK & motion planning (
 ### 1. Perception servers (auto-launched)
 
 Perception servers (SAM3, ContactGraspNet, PyRoKi) are **auto-launched** by the YAML config when you run an evaluation. No manual setup required for most configs.
+
+> **SAM3 authentication:** SAM3 weights require HuggingFace access. Request access at the [SAM3 repo](https://github.com/facebookresearch/sam3), then authenticate locally with `huggingface-cli login`. Weights are cached after first download.
 
 To pre-launch servers (e.g. for sharing across multiple eval runs):
 
@@ -158,7 +161,8 @@ uv run --no-sync --active capx/envs/launch.py \
     --config-path env_configs/libero/franka_libero_spatial_0.yaml \
     --model "google/gemini-3.1-pro-preview"
 
-# BEHAVIOR: R1Pro radio pickup (20 trials)
+# BEHAVIOR: R1Pro radio pickup (20 trials) — requires b1k venv
+source capx/third_party/b1k/.venv/bin/activate
 OMNI_KIT_ACCEPT_EULA=YES OMNIGIBSON_HEADLESS=1 \
 uv run --no-sync --active capx/envs/launch.py \
     --config-path env_configs/r1pro/r1pro_pick_up_radio.yaml \
