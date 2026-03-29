@@ -41,10 +41,14 @@ After `uv_install.sh`, a few additional steps may be needed depending on your sy
 sudo rm -f /usr/share/vulkan/icd.d/nvidia_icd.json
 
 # 2. Fix missing cuRobo CUDA headers for JIT compilation
-#    The pip-installed cuRobo may be missing header files needed for first-time kernel compilation:
+#    The pip-installed cuRobo may be missing header files needed for first-time kernel compilation.
+#    Run this with the b1k venv active:
+source capx/third_party/b1k/.venv/bin/activate
 cp capx/third_party/curobo/src/curobo/curobolib/cpp/*.h \
    $(python -c "import sysconfig; print(sysconfig.get_path('purelib'))")/curobo/curobolib/cpp/
 ```
+
+> **Note:** On first run, cuRobo JIT-compiles CUDA kernels for the GPU architecture. This can take **3–5 minutes** and produces "JIT compiling..." warnings — this is normal.
 
 For headless servers, also install EGL:
 
@@ -172,7 +176,13 @@ All 50 tasks are runnable via `launch.py`. Tasks 0–1 use dedicated configs wit
 
 ## Running evaluations
 
+All BEHAVIOR evaluations must run with the b1k venv active and environment variables set:
+
 ```bash
+source capx/third_party/b1k/.venv/bin/activate
+export OMNI_KIT_ACCEPT_EULA=YES
+export OMNIGIBSON_HEADLESS=1  # only needed on headless servers
+
 # Radio pickup (oracle, single-turn)
 uv run --no-sync --active capx/envs/launch.py \
     --config-path env_configs/r1pro/r1pro_pick_up_radio.yaml
@@ -197,9 +207,11 @@ BEHAVIOR tasks use the following components:
 
 ## API servers
 
-BEHAVIOR tasks require perception servers running alongside the simulator. The YAML configs auto-launch them, but you can also start them manually:
+BEHAVIOR tasks require perception servers running alongside the simulator. The YAML configs auto-launch them, but you can also start them manually. **All BEHAVIOR commands must run with the b1k venv active:**
 
 ```bash
+source capx/third_party/b1k/.venv/bin/activate
+
 # SAM3 segmentation server
 uv run --no-sync --active python -m capx.serving.launch_sam3_server --device cuda --port 8114
 
@@ -218,3 +230,4 @@ uv run --no-sync --active python -m capx.serving.launch_contact_graspnet_server 
 - **Rendering errors on headless servers** — Install `libegl1 libgl1` and ensure GPU is accessible.
 - **Websockets conflict** — The install script auto-fixes this. If you see websockets errors, manually remove `pip_prebundle/websockets` directories under Isaac Sim's `extscache/`.
 - **First run is slow** — cuRobo JIT-compiles CUDA kernels on first import (~5 min). Subsequent runs use cached kernels. Set `TORCH_CUDA_ARCH_LIST` to your GPU's compute capability (e.g., `8.9` for L40/Ada) to speed up compilation.
+- **PyTorch CUDA version mismatch** — OmniGibson may install PyTorch built for CUDA 13.0, which requires driver 570+. If your driver is older (e.g., 550), `uv_install.sh` auto-downgrades to `cu124`. If you see `CUDA error: no kernel image is available`, manually run: `uv pip install "torch==2.6.0+cu124" "torchvision==0.21.0+cu124" --extra-index-url https://download.pytorch.org/whl/cu124` inside the b1k venv.

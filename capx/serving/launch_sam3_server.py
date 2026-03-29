@@ -87,19 +87,19 @@ class SegmentRequest(BaseModel):
 
 class PointPromptRequest(BaseModel):
     image_base64: str
-    point_coords: tuple[float, float]
+    point_coords: list[float]  # [x, y] — JSON arrays, not tuples
 
 
 class PointPromptResponse(BaseModel):
     scores: list[float]
     masks_base64: str
-    masks_shape: tuple[int, int, int]  # (num_masks, H, W)
+    masks_shape: list[int]  # [num_masks, H, W]
     masks_dtype: str
 
 
 class MaskData(BaseModel):
     mask_base64: str
-    shape: tuple[int, int]
+    shape: list[int]  # [H, W]
     box: list[float]  # [x1, y1, x2, y2]
     score: float
     label: str
