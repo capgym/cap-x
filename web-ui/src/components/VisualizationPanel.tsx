@@ -20,11 +20,13 @@ export function VisualizationPanel() {
     setIsEditing(false);
     setConnectionStatus('connecting');
     setHasEverConnected(false);
+    hasEverConnectedRef.current = false;
     setRetryCount(0);
   };
 
   // Poll the viser proxy every 3s.
   const wasConnectedRef = useRef(false);
+  const hasEverConnectedRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -39,9 +41,12 @@ export function VisualizationPanel() {
 
           if (resp.ok) {
             if (!wasConnectedRef.current) {
-              // Transition: not connected -> connected — reload iframe
               wasConnectedRef.current = true;
-              setRetryCount(c => c + 1);
+              // Only reload iframe on first-ever connection, not on reconnect
+              if (!hasEverConnectedRef.current) {
+                hasEverConnectedRef.current = true;
+                setRetryCount(c => c + 1);
+              }
             }
             setConnectionStatus('connected');
             setHasEverConnected(true);
@@ -55,7 +60,8 @@ export function VisualizationPanel() {
             prev === 'connected' ? 'disconnected' : prev === 'connecting' ? 'connecting' : 'disconnected'
           );
         }
-        await new Promise(r => setTimeout(r, 3000));
+        // Poll faster when connecting, slower when stable
+        await new Promise(r => setTimeout(r, wasConnectedRef.current ? 5000 : 3000));
       }
     }
 
@@ -76,8 +82,10 @@ export function VisualizationPanel() {
 
   const handleManualRefresh = () => {
     wasConnectedRef.current = false;
+    hasEverConnectedRef.current = false;
     setRetryCount(c => c + 1);
     setConnectionStatus('connecting');
+    setHasEverConnected(false);
   };
 
   const statusDotClass = connectionStatus === 'connected'
