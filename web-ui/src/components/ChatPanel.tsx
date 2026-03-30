@@ -101,7 +101,7 @@ export function ChatPanel({
             </div>
 
             {/* Title — large, tracked, uppercase */}
-            <h2 className="text-display font-bold text-text-primary tracking-[0.2em] uppercase mb-2">CaP-X</h2>
+            <h2 className="text-display font-bold text-text-primary tracking-widest uppercase mb-2">CaP-X</h2>
             <div className="gold-rule w-16 mx-auto mb-4" />
             <p className="text-sm text-text-tertiary tracking-wide mb-12">Code-as-Policy Agent Framework</p>
 

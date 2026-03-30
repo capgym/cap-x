@@ -137,7 +137,7 @@ function App() {
           {/* Logo */}
           <div className="flex items-center gap-2.5 flex-shrink-0">
             <img src="/capx_logo.svg" alt="CaP-X" className="w-7 h-7" />
-            <h1 className="text-base font-bold text-text-primary tracking-[0.15em] uppercase">CaP-X</h1>
+            <h1 className="text-base font-bold text-text-primary tracking-widest uppercase">CaP-X</h1>
           </div>
 
           {/* Divider */}
@@ -199,7 +199,7 @@ function App() {
             {showSettings && (
               <div className="absolute right-0 top-full mt-2 w-[calc(100vw-2rem)] sm:w-96 bg-surface-raised rounded-lg shadow-2xl border border-surface-border-light z-50 animate-scale-in">
                 <div className="px-5 py-3.5 border-b border-surface-border flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-text-primary tracking-wide">Settings</h3>
+                  <h3 className="text-sm font-bold text-text-primary tracking-wide">Settings</h3>
                   <button
                     onClick={() => setShowSettings(false)}
                     className="p-2 text-text-tertiary hover:text-text-primary rounded transition-colors"

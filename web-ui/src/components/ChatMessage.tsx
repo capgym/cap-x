@@ -428,7 +428,7 @@ export function ChatMessageComponent({ message }: ChatMessageComponentProps) {
               </svg>
             </div>
             <div>
-              <div className={`font-semibold text-sm ${isSuccess ? 'text-nv-green' : 'text-red-400'}`}>
+              <div className={`font-bold text-sm ${isSuccess ? 'text-nv-green' : 'text-red-400'}`}>
                 {isSuccess ? 'Trial Completed Successfully' : 'Trial Failed'}
               </div>
               <div className="text-xs text-text-tertiary mt-0.5">
@@ -463,7 +463,7 @@ export function ChatMessageComponent({ message }: ChatMessageComponentProps) {
               </svg>
             </div>
             <div>
-              <div className="font-semibold text-sm text-red-400">Error</div>
+              <div className="font-bold text-sm text-red-400">Error</div>
               <div className="text-sm text-red-400">{message.error}</div>
             </div>
           </div>
