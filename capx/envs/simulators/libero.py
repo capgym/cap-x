@@ -188,6 +188,10 @@ class FrankaLiberoEnv(BaseEnv):
             ]
         )
 
+        # Update viser immediately so the 3D view reflects the reset state
+        if self.viser_debug:
+            self._update_viser_server()
+
         info = {"task_prompt": self.handle.task_language}
         return obs, info
 

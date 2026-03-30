@@ -268,6 +268,10 @@ class CodeExecutionEnvBase(Env):
         self._step_count += 1
         exec_result = self._exec_user_code(action)
         obs = self._get_observation()
+        # Force viser 3D view update after code execution so the scene
+        # reflects the final state (sim substep updates may have been skipped).
+        if hasattr(self.low_level_env, "viser_debug") and self.low_level_env.viser_debug:
+            self.low_level_env._update_viser_server()
         reward = self.compute_reward()
         if hasattr(self.low_level_env, "task_completed"):
             task_completed = self.low_level_env.task_completed()

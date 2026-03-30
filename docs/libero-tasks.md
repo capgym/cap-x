@@ -12,7 +12,7 @@ uv venv .venv-libero --python 3.12
 source .venv-libero/bin/activate
 
 # 2. Install LIBERO dependencies (--active targets the activated venv)
-uv sync --active --extra libero
+uv sync --active --extra libero --extra contactgraspnet
 
 # 3. Set up an LLM proxy (needed for code generation)
 echo "sk-or-v1-your-key" > .openrouterkey
@@ -20,6 +20,21 @@ python capx/serving/openrouter_server.py --key-file .openrouterkey --port 8110
 ```
 
 > **Note:** The PyRoKi IK server (port 8116) is auto-started by the YAML config. No manual setup needed.
+
+### Headless / non-interactive setup
+
+On headless servers or in non-interactive environments (CI, Docker), LIBERO needs a config file at `~/.libero/config.yaml` pointing to the submodule paths. Create it manually if the interactive setup prompt is not available:
+
+```bash
+mkdir -p ~/.libero
+cat > ~/.libero/config.yaml << EOF
+assets: $(pwd)/capx/third_party/LIBERO-PRO/libero/libero/assets
+bddl_files: $(pwd)/capx/third_party/LIBERO-PRO/libero/libero/bddl_files
+benchmark_root: $(pwd)/capx/third_party/LIBERO-PRO/libero/libero
+datasets: $(pwd)/capx/third_party/LIBERO-PRO/libero/libero/../datasets
+init_states: $(pwd)/capx/third_party/LIBERO-PRO/libero/libero/init_files
+EOF
+```
 
 ## Running a Task
 

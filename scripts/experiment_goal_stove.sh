@@ -4,7 +4,7 @@
 # Runs 10 trials with 1 worker using launch.py directly (batch runner has no task filter).
 set -e
 
-cd /home/gear/HyRL-main-regression
+cd "$(git rev-parse --show-toplevel)"
 
 echo "=== Experiment: turn_on_the_stove (libero_goal_swap task 7) ==="
 echo "Trials: 10, Workers: 1"

@@ -2,7 +2,7 @@
 # Quick experiment: run 5 trials per task on libero_object_swap with improved prompt
 # Usage: bash scripts/run_experiment_now.sh
 set -e
-cd /home/gear/HyRL-main-regression
+cd "$(git rev-parse --show-toplevel)"
 
 echo "=== Server Check ==="
 for port in 8110 8114 8115 8116; do

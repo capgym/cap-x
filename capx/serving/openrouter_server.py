@@ -1,4 +1,5 @@
 import itertools
+import json
 import logging
 from pathlib import Path
 from typing import List, Literal, Optional, Union
@@ -7,6 +8,7 @@ import tyro
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from openai import AsyncOpenAI, OpenAI
 from pydantic import BaseModel, Field
 
@@ -99,7 +101,7 @@ def create_app(api_key: str, base_url: str, async_client: bool = True) -> FastAP
 
     if async_client:
 
-        @app.post("/chat/completions", response_model=ChatCompletionResponse)
+        @app.post("/chat/completions")
         async def chat_completions(request: ChatCompletionRequest):
             try:
                 client_kwargs = request.model_dump(exclude_none=True)
@@ -110,9 +112,19 @@ def create_app(api_key: str, base_url: str, async_client: bool = True) -> FastAP
                 if model.startswith("openrouter/"):
                     client_kwargs["model"] = model[len("openrouter/"):]
 
-                # Ensure stream is False (proxy limitation for now)
-                client_kwargs["stream"] = False
+                if request.stream:
+                    client_kwargs["stream"] = True
+                    response = await client.chat.completions.create(**client_kwargs)
 
+                    async def event_stream():
+                        async for chunk in response:
+                            data = chunk.model_dump_json()
+                            yield f"data: {data}\n\n"
+                        yield "data: [DONE]\n\n"
+
+                    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+                client_kwargs["stream"] = False
                 response = await client.chat.completions.create(**client_kwargs)
 
                 choices = [

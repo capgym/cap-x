@@ -8,7 +8,7 @@ const FALLBACK_CONFIG = 'env_configs/cube_stack/franka_robosuite_cube_stack.yaml
 
 function App() {
   const trial = useTrialState();
-  const [model, setModel] = useState('aws/anthropic/claude-opus-4-5');
+  const [model, setModel] = useState('google/gemini-3.1-pro-preview');
   const [serverUrl, setServerUrl] = useState('http://127.0.0.1:8110/chat/completions');
   const [temperature, setTemperature] = useState(1.0);
   const [awaitUserInput, setAwaitUserInput] = useState(true);
@@ -209,27 +209,27 @@ function App() {
                       disabled={isRunning}
                       className="w-full px-3 py-2 bg-surface-sunken border border-surface-border rounded-lg text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent disabled:opacity-50 transition-colors"
                     >
+                      <optgroup label="Google">
+                        <option value="google/gemini-3.1-pro-preview">Gemini 3.1 Pro Preview</option>
+                        <option value="google/gemini-3.1-pro">Gemini 3.1 Pro</option>
+                        <option value="google/gemini-2.5-flash-lite">Gemini 2.5 Flash Lite</option>
+                      </optgroup>
                       <optgroup label="Anthropic">
-                        <option value="aws/anthropic/claude-opus-4-5">Claude Opus 4.5</option>
-                        <option value="aws/anthropic/claude-haiku-4-5-v1">Claude Haiku 4.5</option>
+                        <option value="anthropic/claude-opus-4-5">Claude Opus 4.5</option>
+                        <option value="anthropic/claude-sonnet-4">Claude Sonnet 4</option>
+                        <option value="anthropic/claude-haiku-4-5">Claude Haiku 4.5</option>
                       </optgroup>
                       <optgroup label="OpenAI">
-                        <option value="azure/openai/gpt-5.2">GPT 5.2</option>
-                        <option value="azure/openai/gpt-5.1">GPT 5.1</option>
-                        <option value="azure/openai/gpt-5.1-codex">GPT 5.1 Codex</option>
-                        <option value="azure/openai/o4-mini">O4 Mini</option>
-                        <option value="azure/openai/o1">O1</option>
-                      </optgroup>
-                      <optgroup label="Google">
-                        <option value="gcp/google/gemini-3-pro">Gemini 3 Pro</option>
-                        <option value="gcp/google/gemini-3-pro-preview">Gemini 3 Pro Preview</option>
-                        <option value="gcp/google/gemini-3-flash-preview">Gemini 3 Flash Preview</option>
-                        <option value="gcp/google/gemini-2.5-flash-lite">Gemini 2.5 Flash Lite</option>
+                        <option value="openai/gpt-5.2">GPT 5.2</option>
+                        <option value="openai/gpt-5.1">GPT 5.1</option>
+                        <option value="openai/gpt-5.1-codex">GPT 5.1 Codex</option>
+                        <option value="openai/o4-mini">O4 Mini</option>
+                        <option value="openai/o1">O1</option>
                       </optgroup>
                       <optgroup label="Open Source">
-                        <option value="nvdev/deepseek-ai/deepseek-v3-0324">DeepSeek V3</option>
-                        <option value="deepseek-ai/deepseek-r1-0528">DeepSeek R1</option>
-                        <option value="nvdev/qwen/qwen-235b">Qwen 235B</option>
+                        <option value="deepseek/deepseek-v3-0324">DeepSeek V3</option>
+                        <option value="deepseek/deepseek-r1-0528">DeepSeek R1</option>
+                        <option value="qwen/qwen-235b-a22b">Qwen 235B</option>
                         <option value="moonshotai/kimi-k2-instruct">Kimi K2</option>
                       </optgroup>
                     </select>
