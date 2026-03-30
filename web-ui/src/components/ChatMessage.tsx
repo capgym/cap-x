@@ -164,7 +164,7 @@ export function ChatMessageComponent({ message }: ChatMessageComponentProps) {
   switch (message.type) {
     case 'system':
       return (
-        <div className="flex justify-center py-1 msg-enter">
+        <div className="flex justify-center py-0.5 msg-enter">
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-surface-raised border border-surface-border border-l-2 border-l-accent">
             <svg className="w-3 h-3 text-text-tertiary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -410,7 +410,7 @@ export function ChatMessageComponent({ message }: ChatMessageComponentProps) {
     case 'completion': {
       const isSuccess = Boolean(message.success);
       return (
-        <div className={`p-4 rounded-lg border msg-enter animate-scale-in ${
+        <div className={`p-5 rounded-lg border msg-enter animate-scale-in ${
           isSuccess
             ? 'bg-nv-green/5 border-nv-green/20'
             : 'bg-red-950/30 border-red-800/20'
@@ -455,7 +455,7 @@ export function ChatMessageComponent({ message }: ChatMessageComponentProps) {
 
     case 'error':
       return (
-        <div className="bg-red-950/30 border border-red-800/20 rounded-xl p-4 msg-enter animate-scale-in">
+        <div className="bg-red-950/30 border border-red-800/20 rounded-xl p-5 msg-enter animate-scale-in">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-red-600 flex items-center justify-center">
               <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">

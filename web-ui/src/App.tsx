@@ -133,7 +133,7 @@ function App() {
     <div className="h-full flex flex-col bg-surface">
       {/* Header */}
       <header className="flex-shrink-0 bg-surface-raised border-b border-surface-border header-glow">
-        <div className="flex items-center h-16 px-5 gap-5">
+        <div className="flex items-center h-16 px-6 gap-4">
           {/* Logo */}
           <div className="flex items-center gap-2.5 flex-shrink-0">
             <img src="/capx_logo.svg" alt="CaP-X" className="w-7 h-7" />
@@ -198,7 +198,7 @@ function App() {
             {/* Settings Popover */}
             {showSettings && (
               <div className="absolute right-0 top-full mt-2 w-[calc(100vw-2rem)] sm:w-96 bg-surface-raised rounded-lg shadow-2xl border border-surface-border-light z-50 animate-scale-in">
-                <div className="px-4 py-3 border-b border-surface-border flex items-center justify-between">
+                <div className="px-5 py-3.5 border-b border-surface-border flex items-center justify-between">
                   <h3 className="text-sm font-semibold text-text-primary tracking-wide">Settings</h3>
                   <button
                     onClick={() => setShowSettings(false)}
@@ -210,7 +210,7 @@ function App() {
                     </svg>
                   </button>
                 </div>
-                <div className="p-4 space-y-4">
+                <div className="p-5 space-y-5">
                   {/* Model */}
                   <div>
                     <label htmlFor="settings-model" className="block text-xs font-medium text-text-secondary mb-1.5 tracking-wide uppercase">Model</label>

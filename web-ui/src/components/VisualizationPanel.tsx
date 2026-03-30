@@ -80,7 +80,7 @@ export function VisualizationPanel() {
   return (
     <div className="flex-1 flex flex-col">
       {/* Header */}
-      <div className="flex-shrink-0 px-4 py-3 bg-surface-raised border-b border-surface-border flex items-center justify-between">
+      <div className="flex-shrink-0 px-5 py-3.5 bg-surface-raised border-b border-surface-border flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="w-6 h-6 rounded-md bg-accent/10 border border-accent/20 flex items-center justify-center">
             <svg className="w-4 h-4 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">

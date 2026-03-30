@@ -44,7 +44,7 @@ export function ChatPanel({
         <div className="flex-shrink-0 bg-surface-raised border-b border-surface-border">
           <button
             onClick={() => needsExpansion && setTaskExpanded(!taskExpanded)}
-            className="w-full px-4 py-2.5 flex items-center justify-between hover:bg-surface-overlay/50 transition-colors"
+            className="w-full px-5 py-3 flex items-center justify-between hover:bg-surface-overlay/50 transition-colors"
           >
             <div className="flex items-center gap-2.5">
               <div className="w-6 h-6 rounded bg-accent/10 border border-accent/20 flex items-center justify-center">
@@ -66,7 +66,7 @@ export function ChatPanel({
 
           {/* Preview (collapsed) */}
           {!taskExpanded && (
-            <div className="px-4 pb-3 relative">
+            <div className="px-5 pb-3 relative">
               <div className="text-sm text-text-primary whitespace-pre-wrap overflow-hidden leading-relaxed" style={{ maxHeight: '4.5em' }}>
                 {taskLines.slice(0, 3).join('\n')}
               </div>
@@ -78,7 +78,7 @@ export function ChatPanel({
 
           {/* Full content (expanded) */}
           {taskExpanded && (
-            <div className="px-4 pb-4 max-h-64 overflow-y-auto">
+            <div className="px-5 pb-4 max-h-64 overflow-y-auto">
               <p className="text-sm text-text-primary whitespace-pre-wrap leading-relaxed">{taskPrompt}</p>
             </div>
           )}
@@ -88,7 +88,7 @@ export function ChatPanel({
       {/* Messages */}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto px-4 py-4 space-y-4 bg-surface"
+        className="flex-1 overflow-y-auto px-5 py-5 space-y-4 bg-surface"
         role="log"
         aria-live="polite"
       >
@@ -127,7 +127,7 @@ export function ChatPanel({
       </div>
 
       {/* Input area */}
-      <div className="flex-shrink-0 border-t border-surface-border bg-surface-raised p-3">
+      <div className="flex-shrink-0 border-t border-surface-border bg-surface-raised px-4 py-4">
         <ChatInput
           onSend={onSendMessage}
           onSkip={onResume}
