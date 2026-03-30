@@ -82,19 +82,19 @@ export function VisualizationPanel() {
       {/* Header */}
       <div className="flex-shrink-0 px-4 py-3 bg-surface-raised border-b border-surface-border flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded-md bg-surface-overlay flex items-center justify-center">
-            <svg className="w-4 h-4 text-text-tertiary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="w-6 h-6 rounded-md bg-accent/10 border border-accent/20 flex items-center justify-center">
+            <svg className="w-4 h-4 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 10l-2 1m0 0l-2-1m2 1v2.5M20 7l-2 1m2-1l-2-1m2 1v2.5M14 4l-2-1-2 1M4 7l2-1M4 7l2 1M4 7v2.5M12 21l-2-1m2 1l2-1m-2 1v-2.5M6 18l-2-1v-2.5M18 18l2-1v-2.5" />
             </svg>
           </div>
-          <span className="text-sm font-medium text-text-primary">3D Visualization</span>
+          <span className="text-sm font-medium text-text-primary tracking-wide">3D Visualization</span>
 
           {/* Connection status indicator */}
           <div className="flex items-center gap-1.5 ml-2">
             <div className={`w-2 h-2 rounded-full ${
               connectionStatus === 'connected'
-                ? 'bg-emerald-400'
-                : 'bg-amber-400 animate-pulse'
+                ? 'bg-nv-green'
+                : 'bg-accent animate-pulse'
             }`} />
             <span className="text-xs text-text-tertiary">
               {connectionStatus === 'connected' ? 'Connected' : 'Connecting...'}
@@ -114,7 +114,7 @@ export function VisualizationPanel() {
               />
               <button
                 onClick={handleSaveUrl}
-                className="px-3 py-1.5 text-xs bg-accent text-white rounded-lg hover:bg-accent-dark transition-colors"
+                className="px-3 py-1.5 text-xs bg-accent text-black rounded-lg hover:bg-accent-dark transition-colors"
               >
                 Save
               </button>
@@ -133,7 +133,7 @@ export function VisualizationPanel() {
               <span className="text-xs text-text-tertiary max-w-[200px] truncate" title={viserUrl}>{viserUrl}</span>
               <button
                 onClick={handleManualRefresh}
-                className="p-1.5 text-text-tertiary hover:text-text-primary hover:bg-surface-overlay rounded-lg transition-colors"
+                className="p-1.5 text-text-tertiary hover:text-accent hover:bg-surface-overlay rounded-lg transition-colors"
                 title="Refresh connection"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -142,7 +142,7 @@ export function VisualizationPanel() {
               </button>
               <button
                 onClick={() => setIsEditing(true)}
-                className="p-1.5 text-text-tertiary hover:text-text-primary hover:bg-surface-overlay rounded-lg transition-colors"
+                className="p-1.5 text-text-tertiary hover:text-accent hover:bg-surface-overlay rounded-lg transition-colors"
                 title="Edit URL"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -151,7 +151,7 @@ export function VisualizationPanel() {
               </button>
               <button
                 onClick={() => window.open(viserUrl, '_blank')}
-                className="p-1.5 text-text-tertiary hover:text-text-primary hover:bg-surface-overlay rounded-lg transition-colors"
+                className="p-1.5 text-text-tertiary hover:text-accent hover:bg-surface-overlay rounded-lg transition-colors"
                 title="Open in new tab"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -167,14 +167,11 @@ export function VisualizationPanel() {
       <div className="flex-1 relative bg-surface-sunken">
         {connectionStatus !== 'connected' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center z-10 bg-surface-sunken/80">
-            <div className="flex items-center gap-3 text-text-tertiary mb-2">
-              <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-              </svg>
-              <span>Waiting for Viser server...</span>
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-6 h-6 border-2 border-accent/20 border-t-accent rounded-full animate-spin" />
+              <span className="text-text-secondary">Waiting for Viser server...</span>
             </div>
-            <span className="text-xs text-text-muted">Auto-retrying every 3 seconds</span>
+            <span className="text-xs text-text-tertiary">Auto-retrying every 3 seconds</span>
           </div>
         )}
         <iframe

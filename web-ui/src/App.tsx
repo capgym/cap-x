@@ -121,12 +121,9 @@ function App() {
   if (!hasCheckedSession) {
     return (
       <div className="h-full flex items-center justify-center bg-surface">
-        <div className="flex items-center gap-3 text-text-tertiary">
-          <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-          </svg>
-          <span className="text-sm font-medium">Initializing...</span>
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-8 h-8 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
+          <span className="text-sm font-medium text-text-secondary tracking-wide">Initializing</span>
         </div>
       </div>
     );
@@ -136,12 +133,17 @@ function App() {
     <div className="h-full flex flex-col bg-surface">
       {/* Header */}
       <header className="flex-shrink-0 bg-surface-raised border-b border-surface-border">
-        <div className="flex items-center h-14 px-4 gap-4">
+        <div className="flex items-center h-16 px-5 gap-5">
           {/* Logo */}
-          <span className="text-lg font-semibold text-text-primary flex-shrink-0">CaP-X</span>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="w-7 h-7 rounded-md bg-accent/10 border border-accent/20 flex items-center justify-center">
+              <span className="text-accent font-bold text-xs">CX</span>
+            </div>
+            <span className="text-base font-semibold text-text-primary tracking-wider">CaP-X</span>
+          </div>
 
           {/* Divider */}
-          <div className="h-6 w-px bg-surface-border flex-shrink-0" />
+          <div className="h-8 w-px bg-surface-border flex-shrink-0" />
 
           {/* Config + Start Control (center) */}
           <div className="flex-1 flex justify-center">
@@ -160,19 +162,19 @@ function App() {
             />
           </div>
 
-          {/* Right side: settings gear + status */}
+          {/* Right side: settings + status */}
           <div className="flex items-center gap-3 flex-shrink-0">
             {/* Status indicator */}
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-overlay">
-              <div className={`w-2 h-2 rounded-full ${
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-surface-overlay border border-surface-border">
+              <div className={`w-1.5 h-1.5 rounded-full ${
                 trial.isConnected
                   ? isRunning
-                    ? 'bg-amber-400 animate-pulse'
-                    : 'bg-emerald-400'
-                  : 'bg-sand-500'
+                    ? 'bg-accent animate-glow-pulse'
+                    : 'bg-nv-green'
+                  : 'bg-text-tertiary'
               }`} />
-              <span className="text-xs text-text-secondary font-medium">
-                {isRunning ? 'Running' : trial.isConnected ? 'Connected' : 'Disconnected'}
+              <span className="text-xs text-text-secondary font-medium tracking-wide">
+                {isRunning ? 'Running' : trial.isConnected ? 'Ready' : 'Offline'}
               </span>
             </div>
 
@@ -180,34 +182,42 @@ function App() {
             <div className="relative" ref={settingsRef}>
             <button
               onClick={() => setShowSettings(!showSettings)}
-              className={`p-1.5 rounded-lg transition-colors ${
+              className={`p-2 rounded-md transition-all duration-150 ${
                 showSettings
-                  ? 'bg-surface-overlay text-text-primary'
-                  : 'text-text-tertiary hover:text-text-primary hover:bg-surface-overlay'
+                  ? 'bg-surface-overlay text-accent border border-accent/20'
+                  : 'text-text-tertiary hover:text-text-primary hover:bg-surface-overlay border border-transparent'
               }`}
               title="Settings"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
             </button>
 
             {/* Settings Popover */}
             {showSettings && (
-              <div className="absolute right-0 top-full mt-2 w-96 bg-surface-overlay rounded-xl shadow-xl border border-surface-border z-50 animate-fade-in">
-                <div className="px-4 py-3 border-b border-surface-border">
-                  <h3 className="text-sm font-semibold text-text-primary">Settings</h3>
+              <div className="absolute right-0 top-full mt-2 w-96 bg-surface-raised rounded-lg shadow-2xl border border-surface-border-light z-50 animate-fade-in">
+                <div className="px-4 py-3 border-b border-surface-border flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-text-primary tracking-wide">Settings</h3>
+                  <button
+                    onClick={() => setShowSettings(false)}
+                    className="p-1 text-text-tertiary hover:text-text-primary rounded transition-colors"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
                 </div>
                 <div className="p-4 space-y-4">
                   {/* Model */}
                   <div>
-                    <label className="block text-xs font-medium text-text-secondary mb-1">Model</label>
+                    <label className="block text-xs font-medium text-text-secondary mb-1.5 tracking-wide uppercase">Model</label>
                     <select
                       value={model}
                       onChange={(e) => setModel(e.target.value)}
                       disabled={isRunning}
-                      className="w-full px-3 py-2 bg-surface-sunken border border-surface-border rounded-lg text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent disabled:opacity-50 transition-colors"
+                      className="w-full px-3 py-2 bg-surface-sunken border border-surface-border rounded-md text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-accent/40 focus:border-accent/40 disabled:opacity-40 transition-all cursor-pointer"
                     >
                       <optgroup label="Google">
                         <option value="google/gemini-3.1-pro-preview">Gemini 3.1 Pro Preview</option>
@@ -237,19 +247,19 @@ function App() {
 
                   {/* Server URL */}
                   <div>
-                    <label className="block text-xs font-medium text-text-secondary mb-1">Server URL</label>
+                    <label className="block text-xs font-medium text-text-secondary mb-1.5 tracking-wide uppercase">Server URL</label>
                     <input
                       type="text"
                       value={serverUrl}
                       onChange={(e) => setServerUrl(e.target.value)}
                       disabled={isRunning}
-                      className="w-full px-3 py-2 bg-surface-sunken border border-surface-border rounded-lg text-sm text-text-primary placeholder-text-tertiary focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent disabled:opacity-50 transition-colors"
+                      className="w-full px-3 py-2 bg-surface-sunken border border-surface-border rounded-md text-sm text-text-primary font-mono placeholder-text-tertiary focus:outline-none focus:ring-1 focus:ring-accent/40 focus:border-accent/40 disabled:opacity-40 transition-all"
                     />
                   </div>
 
                   {/* Temperature */}
                   <div>
-                    <label className="block text-xs font-medium text-text-secondary mb-1">Temperature</label>
+                    <label className="block text-xs font-medium text-text-secondary mb-1.5 tracking-wide uppercase">Temperature</label>
                     <input
                       type="number"
                       value={temperature}
@@ -258,24 +268,28 @@ function App() {
                       min="0"
                       max="2"
                       step="0.1"
-                      className="w-24 px-3 py-2 bg-surface-sunken border border-surface-border rounded-lg text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent disabled:opacity-50 transition-colors"
+                      className="w-24 px-3 py-2 bg-surface-sunken border border-surface-border rounded-md text-sm text-text-primary font-mono focus:outline-none focus:ring-1 focus:ring-accent/40 focus:border-accent/40 disabled:opacity-40 transition-all"
                     />
                   </div>
 
                   {/* Pause each turn */}
-                  <label className="flex items-center gap-2.5 cursor-pointer group">
-                    <input
-                      type="checkbox"
-                      checked={awaitUserInput}
-                      onChange={(e) => {
-                        const newValue = e.target.checked;
-                        setAwaitUserInput(newValue);
-                        if (isRunning) {
-                          trial.updateSettings({ await_user_input_each_turn: newValue });
-                        }
-                      }}
-                      className="w-4 h-4 rounded border-surface-border-light text-accent focus:ring-accent/30 focus:ring-offset-0"
-                    />
+                  <label className="flex items-center gap-2.5 cursor-pointer group py-1">
+                    <div className="relative">
+                      <input
+                        type="checkbox"
+                        checked={awaitUserInput}
+                        onChange={(e) => {
+                          const newValue = e.target.checked;
+                          setAwaitUserInput(newValue);
+                          if (isRunning) {
+                            trial.updateSettings({ await_user_input_each_turn: newValue });
+                          }
+                        }}
+                        className="sr-only peer"
+                      />
+                      <div className="w-8 h-4.5 bg-surface-border rounded-full peer-checked:bg-accent/80 transition-colors" />
+                      <div className="absolute top-0.5 left-0.5 w-3.5 h-3.5 bg-text-secondary rounded-full peer-checked:translate-x-3.5 peer-checked:bg-white transition-all" />
+                    </div>
                     <span className="text-sm text-text-secondary group-hover:text-text-primary transition-colors">
                       Pause each turn for feedback
                     </span>
@@ -290,7 +304,7 @@ function App() {
 
       {/* Main Content — Resizable Split */}
       <main ref={containerRef} className="flex-1 flex overflow-hidden relative">
-        {/* Overlay to capture mouse during drag (prevents iframe from stealing events) */}
+        {/* Overlay to capture mouse during drag */}
         {isDragging && <div className="absolute inset-0 z-20" />}
 
         {/* Left Panel - Chat */}
@@ -309,18 +323,22 @@ function App() {
 
         {/* Draggable Divider */}
         <div
-          className={`flex-shrink-0 w-1.5 cursor-col-resize relative group z-30 transition-colors ${
-            isDragging ? 'bg-accent' : 'bg-surface-border hover:bg-accent/60'
+          className={`flex-shrink-0 w-px cursor-col-resize relative group z-30 transition-colors duration-150 ${
+            isDragging ? 'bg-accent' : 'bg-surface-border hover:bg-accent/50'
           }`}
           onMouseDown={handleMouseDown}
         >
           {/* Wider invisible hit target */}
-          <div className="absolute inset-y-0 -left-1.5 -right-1.5" />
-          {/* Visual grip dots */}
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            <div className="w-1 h-1 rounded-full bg-sand-400" />
-            <div className="w-1 h-1 rounded-full bg-sand-400" />
-            <div className="w-1 h-1 rounded-full bg-sand-400" />
+          <div className="absolute inset-y-0 -left-2 -right-2" />
+          {/* Visual grip indicator */}
+          <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-8 rounded-full flex items-center justify-center transition-all ${
+            isDragging ? 'bg-accent/20' : 'bg-transparent group-hover:bg-surface-overlay'
+          }`}>
+            <div className="flex flex-col gap-0.5">
+              <div className="w-0.5 h-0.5 rounded-full bg-text-tertiary" />
+              <div className="w-0.5 h-0.5 rounded-full bg-text-tertiary" />
+              <div className="w-0.5 h-0.5 rounded-full bg-text-tertiary" />
+            </div>
           </div>
         </div>
 

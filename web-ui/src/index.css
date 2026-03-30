@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -6,8 +8,8 @@
   font-family: 'Inter', system-ui, sans-serif;
   line-height: 1.5;
   font-weight: 400;
-  color: #F0EBE4;
-  background-color: #2B2520;
+  color: #E8E8E8;
+  background-color: #0a0a0a;
 }
 
 body {
@@ -21,7 +23,7 @@ body {
   width: 100vw;
 }
 
-/* Custom scrollbar — dark warm palette */
+/* Custom scrollbar — dark with gold accent on hover */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -32,22 +34,40 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #524A42;
+  background: #333333;
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #6B6158;
+  background: #D4A017;
 }
 
-/* Code block styling — warm dark */
+/* Code block styling — cool neutral dark */
 .hljs {
-  background: #231E1A !important;
-  color: #E0D8CD !important;
+  background: #050505 !important;
+  color: #d4d4d4 !important;
   padding: 1rem !important;
   border-radius: 0 !important;
   overflow-x: auto !important;
+  font-family: 'JetBrains Mono', ui-monospace, monospace !important;
+  font-size: 0.8125rem !important;
+  line-height: 1.6 !important;
 }
+
+/* Syntax theme — cool with gold keywords */
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-type { color: #D4A017; }
+.hljs-string,
+.hljs-attr { color: #98c379; }
+.hljs-number,
+.hljs-literal { color: #d19a66; }
+.hljs-comment { color: #555555; font-style: italic; }
+.hljs-function,
+.hljs-title { color: #61afef; }
+.hljs-built_in { color: #e5c07b; }
+.hljs-variable { color: #e06c75; }
+.hljs-params { color: #abb2bf; }
 
 /* Thinking section */
 details summary {
@@ -60,8 +80,13 @@ details summary::-webkit-details-marker {
 }
 
 details summary::before {
-  content: '>';
+  content: '';
   display: inline-block;
+  width: 0;
+  height: 0;
+  border-left: 5px solid currentColor;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
   margin-right: 0.5rem;
   transition: transform 0.2s;
 }
@@ -87,21 +112,30 @@ details[open] summary::before {
 }
 
 @keyframes fadeIn {
-  0% {
-    opacity: 0;
-  }
-  100% {
-    opacity: 1;
-  }
+  0% { opacity: 0; }
+  100% { opacity: 1; }
 }
 
-/* Prose overrides for dark warm theme */
-.prose-warm {
-  --tw-prose-body: #F0EBE4;
-  --tw-prose-headings: #F0EBE4;
-  --tw-prose-links: #D4845A;
-  --tw-prose-bold: #F0EBE4;
-  --tw-prose-code: #D4845A;
+/* Gold gradient text utility */
+.text-gold-gradient {
+  background: linear-gradient(135deg, #D4A017, #F0C040);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Gold border glow */
+.border-gold-glow {
+  box-shadow: 0 0 0 1px rgba(212, 160, 23, 0.2), 0 0 12px -2px rgba(212, 160, 23, 0.15);
+}
+
+/* Prose overrides for dark theme */
+.prose-dark {
+  --tw-prose-body: #E8E8E8;
+  --tw-prose-headings: #E8E8E8;
+  --tw-prose-links: #D4A017;
+  --tw-prose-bold: #E8E8E8;
+  --tw-prose-code: #D4A017;
 }
 
 /* Resizer handle */
@@ -112,5 +146,11 @@ details[open] summary::before {
 
 .resize-handle:hover,
 .resize-handle:active {
-  background-color: #D4845A;
+  background-color: #D4A017;
+}
+
+/* Selection color */
+::selection {
+  background: rgba(212, 160, 23, 0.3);
+  color: #ffffff;
 }

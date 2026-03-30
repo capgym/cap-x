@@ -47,7 +47,7 @@ export function ChatInput({ onSend, onSkip, disabled, placeholder }: ChatInputPr
           disabled={disabled}
           placeholder={placeholder}
           rows={1}
-          className="w-full pl-4 pr-12 py-3 bg-surface-sunken border border-surface-border rounded-2xl text-sm text-text-primary placeholder-text-tertiary resize-none overflow-y-hidden focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent/40 disabled:opacity-50 disabled:cursor-not-allowed transition-all leading-5"
+          className="w-full pl-4 pr-12 py-3 bg-surface-sunken border border-surface-border rounded-md text-sm text-text-primary placeholder-text-tertiary resize-none overflow-y-hidden focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent/40 disabled:opacity-50 disabled:cursor-not-allowed transition-all leading-5"
         />
         {/* Send button inside input */}
         <button
@@ -64,7 +64,7 @@ export function ChatInput({ onSend, onSkip, disabled, placeholder }: ChatInputPr
       <button
         onClick={onSkip}
         disabled={disabled}
-        className="px-4 py-2.5 bg-surface-overlay text-text-secondary rounded-xl text-sm font-medium hover:bg-surface-border hover:text-text-primary disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        className="px-4 py-2.5 bg-surface-overlay text-text-secondary rounded-md text-sm font-medium hover:bg-surface-border hover:text-text-primary disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
       >
         Skip
       </button>

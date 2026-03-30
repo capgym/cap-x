@@ -19,7 +19,7 @@ export function ImageViewer({ src, alt, className }: ImageViewerProps) {
       <img
         src={imageSrc}
         alt={alt}
-        className={className || "rounded-lg max-w-full max-h-64 object-contain cursor-pointer hover:opacity-90 transition-opacity border border-surface-border"}
+        className={className || "rounded-md max-w-full max-h-64 object-contain cursor-pointer hover:opacity-90 transition-opacity border border-surface-border"}
         onClick={() => setIsExpanded(true)}
       />
 
@@ -33,7 +33,7 @@ export function ImageViewer({ src, alt, className }: ImageViewerProps) {
             <img
               src={imageSrc}
               alt={alt}
-              className="max-w-full max-h-[90vh] object-contain rounded-lg"
+              className="max-w-full max-h-[90vh] object-contain rounded-md"
             />
             <button
               onClick={() => setIsExpanded(false)}

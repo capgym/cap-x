@@ -9,11 +9,11 @@ interface StatusBarProps {
 
 export function StatusBar({ state, sessionId, isConnected, error }: StatusBarProps) {
   const stateColors: Record<SessionState, string> = {
-    idle: 'bg-slate-500',
-    loading_config: 'bg-blue-500',
-    running: 'bg-green-500 animate-pulse',
-    awaiting_user_input: 'bg-amber-500',
-    complete: 'bg-green-600',
+    idle: 'bg-text-tertiary',
+    loading_config: 'bg-accent',
+    running: 'bg-nv-green animate-pulse',
+    awaiting_user_input: 'bg-accent-light',
+    complete: 'bg-nv-green',
     error: 'bg-red-500',
   };
 
@@ -27,7 +27,7 @@ export function StatusBar({ state, sessionId, isConnected, error }: StatusBarPro
   };
 
   return (
-    <div className="flex-shrink-0 bg-slate-800 px-4 py-2 flex items-center justify-between text-xs text-slate-300">
+    <div className="flex-shrink-0 bg-surface-raised border-t border-surface-border px-4 py-2 flex items-center justify-between text-xs text-text-secondary">
       <div className="flex items-center gap-4">
         {/* State indicator */}
         <div className="flex items-center gap-2">
@@ -39,7 +39,7 @@ export function StatusBar({ state, sessionId, isConnected, error }: StatusBarPro
         <div className="flex items-center gap-2">
           <span
             className={`w-2 h-2 rounded-full ${
-              isConnected ? 'bg-green-400' : 'bg-slate-500'
+              isConnected ? 'bg-nv-green' : 'bg-text-tertiary'
             }`}
           ></span>
           <span>WS: {isConnected ? 'Connected' : 'Disconnected'}</span>
@@ -47,7 +47,7 @@ export function StatusBar({ state, sessionId, isConnected, error }: StatusBarPro
 
         {/* Session ID */}
         {sessionId && (
-          <span className="text-slate-500">
+          <span className="text-text-tertiary">
             Session: {sessionId.slice(0, 8)}...
           </span>
         )}
