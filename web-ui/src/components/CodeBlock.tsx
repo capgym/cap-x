@@ -42,6 +42,9 @@ export function CodeBlock({ code, language = 'python', compact = false, collapsi
         <div
           className="relative bg-surface-sunken border border-surface-border border-t-accent/10 rounded-md cursor-pointer hover:border-surface-border-light transition-all overflow-hidden"
           onClick={() => setIsCollapsed(false)}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setIsCollapsed(false); } }}
+          role="button"
+          tabIndex={0}
         >
           {language && (
             <span className="absolute top-2 left-3 text-xs text-text-muted uppercase tracking-wider select-none z-10">
@@ -84,7 +87,7 @@ export function CodeBlock({ code, language = 'python', compact = false, collapsi
         )}
         <button
           onClick={handleCopy}
-          className="absolute top-2 right-2 z-10 p-1 rounded text-text-tertiary bg-transparent hover:text-accent hover:bg-surface-overlay transition-colors"
+          className="absolute top-2 right-2 z-10 p-1.5 rounded text-text-tertiary bg-transparent hover:text-accent hover:bg-surface-overlay transition-colors"
           aria-label="Copy code"
         >
           {copied ? (

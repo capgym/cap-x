@@ -137,7 +137,7 @@ function App() {
           {/* Logo */}
           <div className="flex items-center gap-2.5 flex-shrink-0">
             <img src="/capx_logo.svg" alt="CaP-X" className="w-7 h-7" />
-            <span className="text-base font-semibold text-text-primary tracking-wider">CaP-X</span>
+            <h1 className="text-base font-semibold text-text-primary tracking-wider">CaP-X</h1>
           </div>
 
           {/* Divider */}
@@ -180,12 +180,13 @@ function App() {
             <div className="relative" ref={settingsRef}>
             <button
               onClick={() => setShowSettings(!showSettings)}
-              className={`p-2 rounded-md transition-all duration-150 ${
+              className={`p-2.5 rounded-md transition-all duration-150 ${
                 showSettings
                   ? 'bg-surface-overlay text-accent border border-accent/20'
                   : 'text-text-tertiary hover:text-text-primary hover:bg-surface-overlay border border-transparent'
               }`}
               title="Settings"
+              aria-label="Settings"
             >
               <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -195,12 +196,13 @@ function App() {
 
             {/* Settings Popover */}
             {showSettings && (
-              <div className="absolute right-0 top-full mt-2 w-96 bg-surface-raised rounded-lg shadow-2xl border border-surface-border-light z-50 animate-fade-in">
+              <div className="absolute right-0 top-full mt-2 w-[calc(100vw-2rem)] sm:w-96 bg-surface-raised rounded-lg shadow-2xl border border-surface-border-light z-50 animate-fade-in">
                 <div className="px-4 py-3 border-b border-surface-border flex items-center justify-between">
                   <h3 className="text-sm font-semibold text-text-primary tracking-wide">Settings</h3>
                   <button
                     onClick={() => setShowSettings(false)}
-                    className="p-1 text-text-tertiary hover:text-text-primary rounded transition-colors"
+                    className="p-2 text-text-tertiary hover:text-text-primary rounded transition-colors"
+                    aria-label="Close settings"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -210,8 +212,9 @@ function App() {
                 <div className="p-4 space-y-4">
                   {/* Model */}
                   <div>
-                    <label className="block text-xs font-medium text-text-secondary mb-1.5 tracking-wide uppercase">Model</label>
+                    <label htmlFor="settings-model" className="block text-xs font-medium text-text-secondary mb-1.5 tracking-wide uppercase">Model</label>
                     <select
+                      id="settings-model"
                       value={model}
                       onChange={(e) => setModel(e.target.value)}
                       disabled={isRunning}
@@ -245,8 +248,9 @@ function App() {
 
                   {/* Server URL */}
                   <div>
-                    <label className="block text-xs font-medium text-text-secondary mb-1.5 tracking-wide uppercase">Server URL</label>
+                    <label htmlFor="settings-server-url" className="block text-xs font-medium text-text-secondary mb-1.5 tracking-wide uppercase">Server URL</label>
                     <input
+                      id="settings-server-url"
                       type="text"
                       value={serverUrl}
                       onChange={(e) => setServerUrl(e.target.value)}
@@ -257,8 +261,9 @@ function App() {
 
                   {/* Temperature */}
                   <div>
-                    <label className="block text-xs font-medium text-text-secondary mb-1.5 tracking-wide uppercase">Temperature</label>
+                    <label htmlFor="settings-temperature" className="block text-xs font-medium text-text-secondary mb-1.5 tracking-wide uppercase">Temperature</label>
                     <input
+                      id="settings-temperature"
                       type="number"
                       value={temperature}
                       onChange={(e) => setTemperature(parseFloat(e.target.value) || 0)}

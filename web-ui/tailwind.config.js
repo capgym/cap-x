@@ -43,8 +43,8 @@ export default {
         text: {
           primary: '#E8E8E8',
           secondary: '#888888',
-          tertiary: '#555555',
-          muted: '#333333',
+          tertiary: '#737373',
+          muted: '#404040',
         },
       },
       animation: {

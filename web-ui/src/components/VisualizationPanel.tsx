@@ -108,7 +108,7 @@ export function VisualizationPanel() {
                 type="text"
                 value={tempUrl}
                 onChange={(e) => setTempUrl(e.target.value)}
-                className="px-3 py-1.5 text-xs bg-surface-sunken text-text-primary border border-surface-border rounded-lg w-64 focus:ring-2 focus:ring-accent/30 focus:border-accent/40"
+                className="px-3 py-1.5 text-xs bg-surface-sunken text-text-primary border border-surface-border rounded-lg w-full sm:w-64 focus:ring-2 focus:ring-accent/30 focus:border-accent/40"
                 onKeyDown={(e) => e.key === 'Enter' && handleSaveUrl()}
                 autoFocus
               />
@@ -133,8 +133,9 @@ export function VisualizationPanel() {
               <span className="text-xs text-text-tertiary max-w-[200px] truncate" title={viserUrl}>{viserUrl}</span>
               <button
                 onClick={handleManualRefresh}
-                className="p-1.5 text-text-tertiary hover:text-accent hover:bg-surface-overlay rounded-lg transition-colors"
+                className="p-2 text-text-tertiary hover:text-accent hover:bg-surface-overlay rounded-lg transition-colors"
                 title="Refresh connection"
+                aria-label="Refresh connection"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -142,8 +143,9 @@ export function VisualizationPanel() {
               </button>
               <button
                 onClick={() => setIsEditing(true)}
-                className="p-1.5 text-text-tertiary hover:text-accent hover:bg-surface-overlay rounded-lg transition-colors"
+                className="p-2 text-text-tertiary hover:text-accent hover:bg-surface-overlay rounded-lg transition-colors"
                 title="Edit URL"
+                aria-label="Edit URL"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -151,8 +153,9 @@ export function VisualizationPanel() {
               </button>
               <button
                 onClick={() => window.open(viserUrl, '_blank')}
-                className="p-1.5 text-text-tertiary hover:text-accent hover:bg-surface-overlay rounded-lg transition-colors"
+                className="p-2 text-text-tertiary hover:text-accent hover:bg-surface-overlay rounded-lg transition-colors"
                 title="Open in new tab"
+                aria-label="Open in new tab"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />

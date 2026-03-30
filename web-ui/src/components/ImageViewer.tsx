@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 interface ImageViewerProps {
   src: string;
@@ -8,6 +8,13 @@ interface ImageViewerProps {
 
 export function ImageViewer({ src, alt, className }: ImageViewerProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const overlayRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (isExpanded && overlayRef.current) {
+      overlayRef.current.focus();
+    }
+  }, [isExpanded]);
 
   // Handle both data URIs and plain base64 strings
   const imageSrc = src.startsWith('data:') || src.startsWith('http')
@@ -26,8 +33,13 @@ export function ImageViewer({ src, alt, className }: ImageViewerProps) {
       {/* Modal for expanded view */}
       {isExpanded && (
         <div
+          ref={overlayRef}
           className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
           onClick={() => setIsExpanded(false)}
+          onKeyDown={(e) => { if (e.key === 'Escape') setIsExpanded(false); }}
+          role="dialog"
+          aria-modal="true"
+          tabIndex={-1}
         >
           <div className="relative max-w-[90vw] max-h-[90vh]">
             <img

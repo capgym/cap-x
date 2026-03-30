@@ -82,7 +82,7 @@ function GeneratingMessage({ message, timestamp }: { message: ChatMessage; times
 
             {reasoningExpanded && (
               <div className="mt-2 ml-5 pl-3 border-l-2 border-accent/20 bg-surface-raised/50 rounded-r-lg p-3">
-                <div className="text-sm text-text-secondary leading-relaxed prose prose-sm max-w-none prose-warm">
+                <div className="text-sm text-text-secondary leading-relaxed prose prose-sm max-w-none prose-invert">
                   <ReactMarkdown>{streamingReasoning}</ReactMarkdown>
                   {message.isStreaming && <span className="inline-block w-2 h-4 bg-accent animate-pulse ml-0.5 rounded-sm" />}
                 </div>
@@ -93,7 +93,7 @@ function GeneratingMessage({ message, timestamp }: { message: ChatMessage; times
 
         {/* Streaming content */}
         {streamingContent ? (
-          <div className="text-sm text-text-primary prose prose-sm max-w-none prose-warm">
+          <div className="text-sm text-text-primary prose prose-sm max-w-none prose-invert">
             <ReactMarkdown>{streamingContent}</ReactMarkdown>
             {message.isStreaming && <span className="inline-block w-2 h-4 bg-accent animate-pulse ml-0.5 rounded-sm" />}
           </div>
@@ -138,7 +138,7 @@ function EnvironmentInitMessage({ message, timestamp }: { message: ChatMessage; 
         )}
       </div>
       {hasDescription && descExpanded && (
-        <div className="mt-2 p-3 bg-surface-raised border border-surface-border rounded-lg text-sm text-text-secondary prose prose-sm max-w-none prose-warm">
+        <div className="mt-2 p-3 bg-surface-raised border border-surface-border rounded-lg text-sm text-text-secondary prose prose-sm max-w-none prose-invert">
           <ReactMarkdown>{message.descriptionContent || ''}</ReactMarkdown>
         </div>
       )}
@@ -256,7 +256,7 @@ export function ChatMessageComponent({ message }: ChatMessageComponentProps) {
             {message.reasoning && <ThinkingSection content={message.reasoning} />}
 
             {showText && (
-              <div className="text-sm text-text-primary mb-3 prose prose-sm max-w-none prose-warm">
+              <div className="text-sm text-text-primary mb-3 prose prose-sm max-w-none prose-invert">
                 <ReactMarkdown>{textContent}</ReactMarkdown>
               </div>
             )}
@@ -388,7 +388,7 @@ export function ChatMessageComponent({ message }: ChatMessageComponentProps) {
                 <span className="text-text-tertiary normal-case tracking-normal">via {message.modelUsed}</span>
               )}
             </div>
-            <div className="text-sm text-text-primary bg-surface-raised rounded-lg p-4 border border-surface-border prose prose-sm max-w-none prose-warm">
+            <div className="text-sm text-text-primary bg-surface-raised rounded-lg p-4 border border-surface-border prose prose-sm max-w-none prose-invert">
               <ReactMarkdown>{message.content || ''}</ReactMarkdown>
             </div>
           </div>
@@ -398,7 +398,7 @@ export function ChatMessageComponent({ message }: ChatMessageComponentProps) {
     case 'user_prompt':
       return (
         <div className="flex items-start gap-3 justify-end msg-enter">
-          <div className="max-w-[70%]">
+          <div className="max-w-[90%] sm:max-w-[70%]">
             <div className="text-xs text-text-muted mb-1 text-right">{timestamp}</div>
             <div className="bg-accent/5 border border-accent/10 text-text-primary rounded-2xl rounded-br-md px-4 py-3 text-sm break-words">
               {message.content}

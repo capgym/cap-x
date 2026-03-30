@@ -108,7 +108,7 @@ export function ConfigStartControl({
           value={selectedConfig}
           onChange={(e) => handleConfigChange(e.target.value)}
           disabled={isRunning || loading}
-          className="appearance-none pl-3 pr-8 py-1.5 bg-[#050505] border border-[#262626] rounded-md text-sm text-text-primary min-w-[280px] focus:outline-none focus:ring-2 focus:ring-[#D4A017]/40 focus:border-[#D4A017] disabled:opacity-50 transition-colors cursor-pointer"
+          className="appearance-none pl-3 pr-8 py-1.5 bg-surface-sunken border border-surface-border rounded-md text-sm text-text-primary min-w-0 sm:min-w-[280px] w-full sm:w-auto focus:outline-none focus:ring-2 focus:ring-accent/40 focus:border-accent disabled:opacity-50 transition-colors cursor-pointer"
         >
           <option value="">Select a config...</option>
           {[...grouped.entries()].map(([category, paths]) => (
@@ -140,7 +140,7 @@ export function ConfigStartControl({
       {canStart && configPath && !loading && (
         <button
           onClick={state === 'complete' || state === 'error' ? handleNewTrial : handleStart}
-          className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-[#D4A017] text-black rounded-md text-sm font-semibold hover:bg-[#F0C040] disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-lg shadow-[#D4A017]/10"
+          className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-accent text-black rounded-md text-sm font-semibold hover:bg-accent-light disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-lg shadow-accent/10"
         >
           {state === 'complete' ? (
             <>
@@ -183,7 +183,7 @@ export function ConfigStartControl({
       {(state === 'complete' || state === 'error') && (
         <button
           onClick={reset}
-          className="p-1.5 text-text-tertiary hover:text-[#D4A017] hover:bg-surface-overlay rounded-md transition-colors"
+          className="p-1.5 text-text-tertiary hover:text-accent hover:bg-surface-overlay rounded-md transition-colors"
           title="Clear"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
