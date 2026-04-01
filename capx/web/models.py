@@ -262,6 +262,7 @@ class StartTrialRequest(BaseModel):
     visual_differencing_model: str | None = "google/gemini-3.1-pro-preview"
     visual_differencing_model_server_url: str | None = "http://127.0.0.1:8110/chat/completions"
     await_user_input_each_turn: bool = False
+    execution_timeout: int = 180  # seconds per code block execution
 
 
 class StartTrialResponse(BaseModel):

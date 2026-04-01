@@ -263,8 +263,9 @@ def create_app() -> FastAPI:
                 visual_differencing_model_api_key=None,
             )
 
-            # Set the initial await_user_input setting on session (can be changed during trial)
+            # Set the initial settings on session (can be changed during trial)
             session.await_user_input_each_turn = request.await_user_input_each_turn
+            session.execution_timeout = request.execution_timeout
 
             # Start trial in background task
             session.task = asyncio.create_task(

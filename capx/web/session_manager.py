@@ -79,6 +79,7 @@ class Session:
 
     # Settings that can be changed during a trial
     await_user_input_each_turn: bool = False
+    execution_timeout: int = 180  # seconds per code block
 
     # Event history for replay on reconnect
     event_history: list[str] = field(default_factory=list)

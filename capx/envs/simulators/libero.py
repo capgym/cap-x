@@ -84,6 +84,7 @@ class FrankaLiberoEnv(BaseEnv):
         self._record_wrist_camera = False
         self._wrist_camera_name = "robot0_eye_in_hand"
         self._subsample_rate = 4
+        self._full_viser_rate = 20  # Full scene update every 20 steps (cameras + pointcloud)
 
         # Robot link indices for transforms
         self.gripper_metric_length = 0.04
@@ -253,7 +254,10 @@ class FrankaLiberoEnv(BaseEnv):
             )
 
             if self.viser_debug and self._sim_step_count % self._subsample_rate == 0:
-                self._update_viser_server()
+                if self._sim_step_count % self._full_viser_rate == 0:
+                    self._update_viser_server()  # Full update with pointcloud
+                else:
+                    self._update_viser_robot_only()  # Fast robot-only
 
             if self._record_frames and self._sim_step_count % self._subsample_rate == 0:
                 self._record_frame()
@@ -288,7 +292,7 @@ class FrankaLiberoEnv(BaseEnv):
         )
 
         if self.viser_debug and self._sim_step_count % self._subsample_rate == 0:
-            self._update_viser_server()
+            self._update_viser_robot_only()
 
         if self._record_frames and self._sim_step_count % self._subsample_rate == 0:
             self._record_frame()
@@ -604,7 +608,20 @@ class FrankaLiberoEnv(BaseEnv):
         )
         return frame[::-1]
 
-    # Viser debugging
+    # Viser debugging — lightweight robot-only update (no camera render)
+    def _update_viser_robot_only(self) -> None:
+        """Update only the URDF visualization — fast, no observation render."""
+        if not self.viser_debug or self.viser_server is None:
+            return
+        self._viser_init_check()
+        joints = np.array(
+            self.handle.env.sim.data.qpos[self._panda_joint_qpos_addrs], dtype=np.float64
+        )
+        gripper_val = self._gripper_fraction * self.gripper_metric_length
+        action_joint_copy = np.append(joints, gripper_val)
+        self.urdf_vis.update_cfg(action_joint_copy)
+
+    # Viser debugging — full update with camera render and pointcloud
     def _update_viser_server(self) -> None:
         obs = self.get_observation()
         if self.viser_debug:

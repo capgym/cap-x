@@ -24,7 +24,7 @@ function ImageGrid({ images, maxVisible = 4 }: { images: string[]; maxVisible?: 
             <ImageViewer
               src={img}
               alt={`Step image ${idx + 1}`}
-              className="h-36 w-auto rounded-lg border border-surface-border hover:border-surface-border-light transition-colors cursor-pointer"
+              className="h-36 w-auto rounded-md border border-surface-border hover:border-surface-border-light transition-colors cursor-pointer"
             />
           </div>
         ))}
@@ -61,21 +61,21 @@ function ExecutionStep({ step }: { step: ExecutionStepData }) {
   return (
     <div className={`border-l-2 pl-3 py-2 ${
       isHighlighted
-        ? 'border-amber-400 bg-amber-900/20 rounded-r-lg'
+        ? 'border-accent-light bg-accent-dark/10 rounded-r-md'
         : 'border-accent/30'
     }`}>
       <div className="flex items-center gap-2 mb-1">
         <span className={`px-2 py-0.5 rounded text-xs font-medium ${
           isHighlighted
-            ? 'bg-amber-900/30 text-amber-400 border border-amber-800/50'
+            ? 'bg-accent-dark/20 text-accent-light border border-accent-dark/40'
             : 'bg-accent/10 text-accent'
         }`}>
           {step.toolName}
         </span>
         <span className="text-text-tertiary text-xs">Step {step.stepIndex + 1}</span>
       </div>
-      <div className={`text-sm prose prose-sm max-w-none prose-warm ${
-        isHighlighted ? 'text-amber-300' : 'text-text-secondary'
+      <div className={`text-sm prose prose-sm max-w-none prose-invert ${
+        isHighlighted ? 'text-accent-light' : 'text-text-secondary'
       }`}>
         <ReactMarkdown>{step.text}</ReactMarkdown>
       </div>
@@ -92,7 +92,7 @@ export function ExecutionDetailDropdown({ steps, blockIndex, isExecuting }: Exec
   if (steps.length === 0) return null;
 
   return (
-    <div className="mt-2 bg-surface-raised/50 rounded-lg border border-surface-border overflow-hidden">
+    <div className="mt-2 bg-surface-raised/50 rounded-md border border-surface-border overflow-hidden">
       <button
         onClick={() => setExpanded(!expanded)}
         className="w-full px-3 py-2 flex items-center justify-between text-left hover:bg-surface-overlay transition-colors"
