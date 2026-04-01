@@ -8,8 +8,9 @@ env:
     _target_: capx.envs.tasks.base.CodeExecEnvConfig
     low_level:
       _target_: capx.envs.simulators.libero.FrankaLiberoEnv
-      suite_name: libero_goal_swap #libero_object_swap
-      task_id: 2 #7
+      suite_name: libero_object_swap
+      task_id: 0
+      privileged: false
       max_steps: 8000
       control_freq: 20
     privileged: false

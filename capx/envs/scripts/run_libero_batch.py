@@ -27,12 +27,11 @@ class LiberoBatchLaunchArgs:
     """Command-line arguments for automated Libero batch execution."""
 
     # Base configuration file
-    base_config_path: str = "env_configs/libero/franka_libero.yaml"
+    base_config_path: str = "env_configs/libero/franka_libero_cap_agent0.yaml"
 
     # Suites to run
     suites: list[str] = field(
         default_factory=lambda: [
-            # Table 2 suites: Pos (swap) and Task perturbations
             "libero_object_swap",
             "libero_object_task",
             "libero_goal_swap",
@@ -50,7 +49,7 @@ class LiberoBatchLaunchArgs:
         ]
     )
 
-    server_url: str = "http://127.0.0.1:8110/chat/completions"  # local NV inference server
+    server_url: str = "http://127.0.0.1:8110/chat/completions"  # local server
 
     # Output directory base
     output_dir: str = "./outputs/libero_batch_run"
@@ -103,12 +102,6 @@ def main(args: LiberoBatchLaunchArgs) -> None:
             try:
                 # We force weights_only=False because Libero checkpoints might be old
                 import torch
-                # Temporarily bypass potential weights_only restrictions if feasible, or catch warning
-                # Note: os.environ is global, set it at script start or ensure it's handled.
-                # Here we trust the environment or the user to have set it if needed, 
-                # but we can try to load to check count.
-                # Actually, get_task_init_states uses torch.load internally.
-                # We need to rely on the environment variable being set if PyTorch requires it.
                 init_states = task_suite.get_task_init_states(task_id)
                 assert init_states is not None, f"No initial states found for task {task_name}"
                 num_trials = len(init_states)
@@ -143,7 +136,6 @@ def main(args: LiberoBatchLaunchArgs) -> None:
             config = base_config.copy()
             
             # Deep copy to ensure we don't modify the shared base_config for subsequent runs
-            # (although yaml.load usually returns new dict, copy is shallow, deepcopy is safer)
             import copy
             config = copy.deepcopy(base_config)
 

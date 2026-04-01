@@ -109,13 +109,13 @@ OpenRouter provides access to Gemini, GPT, Claude, DeepSeek, Qwen, and other mod
    uv run --no-sync --active capx/serving/openrouter_server.py --key-file .openrouterkey --port 8110
    ```
 
-### Option C: vLLM (local models)
+### Option B: vLLM (local models)
 
 ```bash
 uv run python -m capx.serving.vllm_server --model Qwen/Qwen2.5-Coder-7B-Instruct --port 8080 --tensor-parallel-size 4
 ```
 
-### Option D: Custom providers
+### Option C: Custom providers
 
 Providers live under `capx/serving/providers/` and implement a simple `generate_code` method. Extend to Gemini/Claude/Bedrock by adding new provider classes.
 

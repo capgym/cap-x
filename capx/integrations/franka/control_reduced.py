@@ -401,7 +401,7 @@ class FrankaControlApiReduced(ApiBase):
             >>> best = max(sam3_results, key=lambda d: d["score"])
             >>> mask = best["mask"]
             >>> K = cam["intrinsics"]
-            >>> grasp_sample_tf, grasp_scores = plan_grasp(
+            >>> grasp_poses, grasp_scores = plan_grasp(
             ...     depth=depth,
             ...     intrinsics=K,
             ...     segmentation=mask,

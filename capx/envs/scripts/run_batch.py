@@ -126,6 +126,9 @@ class BatchLaunchArgs:
             # "env_configs/spill_wipe/hillclimb/debug_ensemble_franka_robosuite_spill_wipe_multiturn_vdm_reduced_api_skill_lib.yaml",
             # "env_configs/two_arm_lift/hillclimb/debug_ensemble_franka_robosuite_two_arm_lift_multiturn_vdm_reduced_api_skill_lib.yaml",
             # "env_configs/two_arm_handover/hillclimb/debug_ensemble_franka_robosuite_two_arm_handover_multiturn_vdm_reduced_api_skill_lib.yaml",
+
+            # LIBERO
+            # "env_configs/libero/franka_libero_spatial_0.yaml",
         ]
     )
     """List of paths to the YAML configuration files to run sequentially."""
@@ -133,7 +136,6 @@ class BatchLaunchArgs:
     # Overrides (mirrored from LaunchArgs to allow global overrides)
     # server_url: str = "http://0.0.0.0:8009/v1/responses"  # local server for running codex models
     server_url: str = "http://127.0.0.1:8110/chat/completions"  # local server 
-    # server_url: str = "http://127.0.0.1:8188/chat/completions"
 
 
     models: list[str] = field(
@@ -150,18 +152,16 @@ class BatchLaunchArgs:
             # "Qwen/Qwen2.5-Coder-7B-Instruct",
             # "Qwen/Qwen3-VL-8B-Instruct",
             # "google/gemini-3.1-pro-preview", # Closed source models
-            # "gcp/google/gemini-3-pro",
             # "google/gemini-3-pro",
-            # "gcp/google/gemini-3-flash",
             # "google/gemini-2.5-flash-lite",
-            # "aws/anthropic/claude-haiku-4-5-v1",
-            "aws/anthropic/claude-opus-4-5",
+            # "anthropic/claude-haiku-4-5-v1",
+            "anthropic/claude-opus-4-5",
             # "openai/openai/gpt-5.2",
             # "openai/openai/gpt-5.1"
-            # "azure/openai/o1",
-            # "azure/openai/o4-mini",
-            # "azure/openai/gpt-5.1-codex",
-            # "azure/openai/gpt-5.1-codex",
+            # "openai/o1",
+            # "openai/o4-mini",
+            # "openai/gpt-5.1-codex",
+            # "openai/gpt-5.1-codex",
         ]
     )
     """Names of the models to query on the vLLM server."""

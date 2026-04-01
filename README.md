@@ -140,7 +140,7 @@ uv run --no-sync --active capx/serving/openrouter_server.py --key-file .openrout
 
 > **Note:** `.openrouterkey` are git-ignored. The default server URL in configs is `http://127.0.0.1:8110/chat/completions`. 
 
-See [docs/configuration.md](docs/configuration.md) for all provider options (OpenRouter, NVIDIA, vLLM, custom).
+See [docs/configuration.md](docs/configuration.md) for all provider options (OpenRouter, vLLM, custom).
 
 ### 3. Run evaluation
 
