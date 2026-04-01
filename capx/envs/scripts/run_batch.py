@@ -148,16 +148,13 @@ class BatchLaunchArgs:
             # "deepseek/deepseek-r1",
             # "qwen/qwen-235b-a22b",
             # "moonshotai/kimi-k2-instruct",
-            # "deepseek-ai/deepseek-v3.1-terminus",
-            # "Qwen/Qwen2.5-Coder-7B-Instruct",
-            # "Qwen/Qwen3-VL-8B-Instruct",
             # "google/gemini-3.1-pro-preview", # Closed source models
             # "google/gemini-3-pro",
             # "google/gemini-2.5-flash-lite",
-            # "anthropic/claude-haiku-4-5-v1",
+            # "anthropic/claude-haiku-4-5",
             "anthropic/claude-opus-4-5",
-            # "openai/openai/gpt-5.2",
-            # "openai/openai/gpt-5.1"
+            # "openai/gpt-5.2",
+            # "openai/gpt-5.1"
             # "openai/o1",
             # "openai/o4-mini",
             # "openai/gpt-5.1-codex",
