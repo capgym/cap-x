@@ -200,6 +200,7 @@ export interface StartTrialRequest {
   visual_differencing_model?: string | null;
   visual_differencing_model_server_url?: string | null;
   await_user_input_each_turn?: boolean;
+  execution_timeout?: number;
 }
 
 export interface StartTrialResponse {

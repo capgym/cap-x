@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import type { SessionState } from '../types/messages';
 
 /**
  * Default Viser URL — goes through the FastAPI reverse proxy so only one
@@ -6,11 +7,16 @@ import { useState, useEffect, useRef } from 'react';
  */
 const DEFAULT_VISER_URL = '/viser-proxy/';
 
-export function VisualizationPanel() {
+interface VisualizationPanelProps {
+  trialState?: SessionState;
+}
+
+export function VisualizationPanel({ trialState }: VisualizationPanelProps) {
   const [viserUrl, setViserUrl] = useState(DEFAULT_VISER_URL);
   const [isEditing, setIsEditing] = useState(false);
   const [tempUrl, setTempUrl] = useState(viserUrl);
-  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'error'>('connecting');
+  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
+  const [hasEverConnected, setHasEverConnected] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -18,12 +24,29 @@ export function VisualizationPanel() {
     setViserUrl(tempUrl);
     setIsEditing(false);
     setConnectionStatus('connecting');
+    setHasEverConnected(false);
+    hasEverConnectedRef.current = false;
     setRetryCount(0);
   };
 
-  // Poll the viser proxy every 3s. When it transitions from not-ok to ok,
-  // bump retryCount to reload the iframe.
+  // When a new trial starts, reset connection tracking so the iframe reloads
+  // to connect to the new Viser instance
+  const prevTrialState = useRef(trialState);
+  useEffect(() => {
+    if (trialState === 'running' && prevTrialState.current !== 'running') {
+      wasConnectedRef.current = false;
+      hasEverConnectedRef.current = false;
+      setConnectionStatus('connecting');
+      setHasEverConnected(false);
+      // Small delay then reload — gives the new Viser server time to start
+      setTimeout(() => setRetryCount(c => c + 1), 1500);
+    }
+    prevTrialState.current = trialState;
+  }, [trialState]);
+
+  // Poll the viser proxy.
   const wasConnectedRef = useRef(false);
+  const hasEverConnectedRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -38,21 +61,27 @@ export function VisualizationPanel() {
 
           if (resp.ok) {
             if (!wasConnectedRef.current) {
-              // Transition: not connected -> connected — reload iframe
               wasConnectedRef.current = true;
-              setRetryCount(c => c + 1);
+              // Only reload iframe on first-ever connection, not on reconnect
+              if (!hasEverConnectedRef.current) {
+                hasEverConnectedRef.current = true;
+                setRetryCount(c => c + 1);
+              }
             }
             setConnectionStatus('connected');
+            setHasEverConnected(true);
           } else {
             wasConnectedRef.current = false;
-            setConnectionStatus('connecting');
+            setConnectionStatus(prev => prev === 'connected' ? 'disconnected' : prev);
           }
         } catch {
           wasConnectedRef.current = false;
-          setConnectionStatus('connecting');
+          setConnectionStatus(prev =>
+            prev === 'connected' ? 'disconnected' : prev === 'connecting' ? 'connecting' : 'disconnected'
+          );
         }
-        // Wait 3 seconds before next poll
-        await new Promise(r => setTimeout(r, 3000));
+        // Poll faster when connecting, slower when stable
+        await new Promise(r => setTimeout(r, wasConnectedRef.current ? 5000 : 3000));
       }
     }
 
@@ -60,44 +89,54 @@ export function VisualizationPanel() {
     return () => { cancelled = true; };
   }, [viserUrl]);
 
-  // Handle iframe load event
   const handleIframeLoad = () => {
     setConnectionStatus('connected');
+    setHasEverConnected(true);
   };
 
-  // Handle iframe error
   const handleIframeError = () => {
-    setConnectionStatus('connecting');
+    if (!hasEverConnected) {
+      setConnectionStatus('connecting');
+    }
   };
 
-  // Manual refresh (just reloads iframe, not the page)
   const handleManualRefresh = () => {
     wasConnectedRef.current = false;
+    hasEverConnectedRef.current = false;
     setRetryCount(c => c + 1);
     setConnectionStatus('connecting');
+    setHasEverConnected(false);
   };
+
+  const statusDotClass = connectionStatus === 'connected'
+    ? 'bg-nv-green'
+    : connectionStatus === 'disconnected'
+    ? 'bg-text-tertiary'
+    : 'bg-accent animate-pulse';
+
+  const statusText = connectionStatus === 'connected'
+    ? 'Connected'
+    : connectionStatus === 'disconnected'
+    ? 'Idle'
+    : 'Connecting...';
 
   return (
     <div className="flex-1 flex flex-col">
       {/* Header */}
-      <div className="flex-shrink-0 px-4 py-3 bg-surface-raised border-b border-surface-border flex items-center justify-between">
+      <div className="flex-shrink-0 px-5 py-3.5 bg-surface-raised border-b border-surface-border flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded-md bg-surface-overlay flex items-center justify-center">
-            <svg className="w-4 h-4 text-text-tertiary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="w-6 h-6 rounded-md bg-accent/10 border border-accent/20 flex items-center justify-center">
+            <svg className="w-4 h-4 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 10l-2 1m0 0l-2-1m2 1v2.5M20 7l-2 1m2-1l-2-1m2 1v2.5M14 4l-2-1-2 1M4 7l2-1M4 7l2 1M4 7v2.5M12 21l-2-1m2 1l2-1m-2 1v-2.5M6 18l-2-1v-2.5M18 18l2-1v-2.5" />
             </svg>
           </div>
-          <span className="text-sm font-medium text-text-primary">3D Visualization</span>
+          <span className="text-sm font-bold font-display tracking-wide uppercase text-text-primary">3D Visualization</span>
 
-          {/* Connection status indicator */}
+          {/* Connection status */}
           <div className="flex items-center gap-1.5 ml-2">
-            <div className={`w-2 h-2 rounded-full ${
-              connectionStatus === 'connected'
-                ? 'bg-emerald-400'
-                : 'bg-amber-400 animate-pulse'
-            }`} />
-            <span className="text-xs text-text-tertiary">
-              {connectionStatus === 'connected' ? 'Connected' : 'Connecting...'}
+            <div className={`w-2 h-2 rounded-full ${statusDotClass}`} />
+            <span className={`text-xs font-display ${connectionStatus === 'connected' ? 'text-nv-green' : 'text-text-tertiary'}`}>
+              {statusText}
             </span>
           </div>
         </div>
@@ -108,13 +147,13 @@ export function VisualizationPanel() {
                 type="text"
                 value={tempUrl}
                 onChange={(e) => setTempUrl(e.target.value)}
-                className="px-3 py-1.5 text-xs bg-surface-sunken text-text-primary border border-surface-border rounded-lg w-64 focus:ring-2 focus:ring-accent/30 focus:border-accent/40"
+                className="px-3 py-1.5 text-xs bg-surface-sunken text-text-primary border border-surface-border rounded-md w-full sm:w-64 focus:ring-1 focus:ring-accent/40 focus:border-accent/40"
                 onKeyDown={(e) => e.key === 'Enter' && handleSaveUrl()}
                 autoFocus
               />
               <button
                 onClick={handleSaveUrl}
-                className="px-3 py-1.5 text-xs bg-accent text-white rounded-lg hover:bg-accent-dark transition-colors"
+                className="px-3 py-1.5 text-xs font-display bg-accent text-black rounded-md hover:bg-accent-light transition-colors"
               >
                 Save
               </button>
@@ -123,7 +162,7 @@ export function VisualizationPanel() {
                   setTempUrl(viserUrl);
                   setIsEditing(false);
                 }}
-                className="px-3 py-1.5 text-xs bg-surface-overlay text-text-secondary rounded-lg hover:bg-surface-border transition-colors"
+                className="px-3 py-1.5 text-xs bg-surface-overlay text-text-secondary rounded-md hover:bg-surface-border transition-colors"
               >
                 Cancel
               </button>
@@ -133,8 +172,9 @@ export function VisualizationPanel() {
               <span className="text-xs text-text-tertiary max-w-[200px] truncate" title={viserUrl}>{viserUrl}</span>
               <button
                 onClick={handleManualRefresh}
-                className="p-1.5 text-text-tertiary hover:text-text-primary hover:bg-surface-overlay rounded-lg transition-colors"
+                className="p-2 text-text-tertiary hover:text-accent hover:bg-surface-overlay rounded-md transition-colors"
                 title="Refresh connection"
+                aria-label="Refresh connection"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -142,8 +182,9 @@ export function VisualizationPanel() {
               </button>
               <button
                 onClick={() => setIsEditing(true)}
-                className="p-1.5 text-text-tertiary hover:text-text-primary hover:bg-surface-overlay rounded-lg transition-colors"
+                className="p-2 text-text-tertiary hover:text-accent hover:bg-surface-overlay rounded-md transition-colors"
                 title="Edit URL"
+                aria-label="Edit URL"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -151,8 +192,9 @@ export function VisualizationPanel() {
               </button>
               <button
                 onClick={() => window.open(viserUrl, '_blank')}
-                className="p-1.5 text-text-tertiary hover:text-text-primary hover:bg-surface-overlay rounded-lg transition-colors"
+                className="p-2 text-text-tertiary hover:text-accent hover:bg-surface-overlay rounded-md transition-colors"
                 title="Open in new tab"
+                aria-label="Open in new tab"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
@@ -165,16 +207,14 @@ export function VisualizationPanel() {
 
       {/* Iframe Container */}
       <div className="flex-1 relative bg-surface-sunken">
-        {connectionStatus !== 'connected' && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center z-10 bg-surface-sunken/80">
-            <div className="flex items-center gap-3 text-text-tertiary mb-2">
-              <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-              </svg>
-              <span>Waiting for Viser server...</span>
+        {/* Only show full blocking overlay when we've NEVER connected */}
+        {!hasEverConnected && connectionStatus === 'connecting' && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center z-10 bg-surface-sunken">
+            <div className="flex items-center gap-3 text-text-secondary mb-2">
+              <div className="w-6 h-6 border-2 border-accent/20 border-t-accent rounded-full animate-spin" />
+              <span className="font-display text-sm">Waiting for Viser server...</span>
             </div>
-            <span className="text-xs text-text-muted">Auto-retrying every 3 seconds</span>
+            <span className="text-xs text-text-tertiary">Start a trial to initialize the 3D view</span>
           </div>
         )}
         <iframe

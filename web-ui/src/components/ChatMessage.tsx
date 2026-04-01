@@ -33,7 +33,7 @@ function GeneratingMessage({ message, timestamp }: { message: ChatMessage; times
   return (
     <div className="flex items-start gap-3 msg-enter">
       {/* AI Avatar */}
-      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-accent flex items-center justify-center">
+      <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-gradient-to-br from-accent to-accent-dark flex items-center justify-center">
         <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
         </svg>
@@ -42,14 +42,14 @@ function GeneratingMessage({ message, timestamp }: { message: ChatMessage; times
         <div className="flex items-center gap-2 text-xs text-text-tertiary mb-2 flex-wrap">
           <span>{timestamp}</span>
           {message.turnNumber !== undefined && message.turnNumber > 0 && (
-            <span className="px-1.5 py-0.5 rounded bg-accent/10 text-accent text-xs font-medium">
+            <span className="px-1.5 py-0.5 rounded bg-accent/10 text-accent text-xs font-display font-medium">
               Turn {message.turnNumber}
             </span>
           )}
           {message.modelUsed && (
             <span className="text-text-tertiary">{message.modelUsed}</span>
           )}
-          <span className="text-accent flex items-center gap-1">
+          <span className="text-accent font-display flex items-center gap-1">
             {message.isStreaming ? (
               <>
                 <span className="inline-block w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
@@ -74,7 +74,7 @@ function GeneratingMessage({ message, timestamp }: { message: ChatMessage; times
               <svg className="w-4 h-4 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
               </svg>
-              <span className="font-medium">{message.isStreaming ? 'Thinking...' : 'Reasoning'}</span>
+              <span className="font-display font-medium">{message.isStreaming ? 'Thinking...' : 'Reasoning'}</span>
               {!message.isStreaming && (
                 <span className="text-text-tertiary">({streamingReasoning.split(/\s+/).length} words)</span>
               )}
@@ -82,9 +82,9 @@ function GeneratingMessage({ message, timestamp }: { message: ChatMessage; times
 
             {reasoningExpanded && (
               <div className="mt-2 ml-5 pl-3 border-l-2 border-accent/20 bg-surface-raised/50 rounded-r-lg p-3">
-                <div className="text-sm text-text-secondary leading-relaxed prose prose-sm max-w-none prose-warm">
+                <div className="text-sm text-text-secondary leading-relaxed prose prose-sm max-w-none prose-invert">
                   <ReactMarkdown>{streamingReasoning}</ReactMarkdown>
-                  {message.isStreaming && <span className="inline-block w-2 h-4 bg-accent animate-pulse ml-0.5 rounded-sm" />}
+                  {message.isStreaming && <span className="inline-block w-2 h-4 bg-accent cursor-blink ml-0.5 rounded-sm" />}
                 </div>
               </div>
             )}
@@ -93,9 +93,9 @@ function GeneratingMessage({ message, timestamp }: { message: ChatMessage; times
 
         {/* Streaming content */}
         {streamingContent ? (
-          <div className="text-sm text-text-primary prose prose-sm max-w-none prose-warm">
+          <div className="text-sm text-text-primary prose prose-sm max-w-none prose-invert">
             <ReactMarkdown>{streamingContent}</ReactMarkdown>
-            {message.isStreaming && <span className="inline-block w-2 h-4 bg-accent animate-pulse ml-0.5 rounded-sm" />}
+            {message.isStreaming && <span className="inline-block w-2 h-4 bg-accent cursor-blink ml-0.5 rounded-sm" />}
           </div>
         ) : message.isStreaming ? (
           <div className="text-sm text-text-tertiary">
@@ -120,12 +120,12 @@ function EnvironmentInitMessage({ message, timestamp }: { message: ChatMessage; 
     <div className="py-1.5 msg-enter">
       <div className="flex items-center gap-2">
         {message.isExecuting ? (
-          <span className="inline-block w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+          <span className="inline-block w-2 h-2 rounded-full bg-accent animate-pulse" />
         ) : (
-          <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
+          <span className="inline-block w-2 h-2 rounded-full bg-nv-green" />
         )}
         <span className="text-xs text-text-tertiary">{timestamp}</span>
-        <span className={`text-sm ${message.isExecuting ? 'text-amber-400' : 'text-emerald-400'}`}>
+        <span className={`text-sm ${message.isExecuting ? 'text-accent' : 'text-nv-green'}`}>
           {message.content}
         </span>
         {hasDescription && (
@@ -138,7 +138,7 @@ function EnvironmentInitMessage({ message, timestamp }: { message: ChatMessage; 
         )}
       </div>
       {hasDescription && descExpanded && (
-        <div className="mt-2 p-3 bg-surface-raised border border-surface-border rounded-lg text-sm text-text-secondary prose prose-sm max-w-none prose-warm">
+        <div className="mt-2 p-3 bg-surface-raised border border-surface-border rounded-lg text-sm text-text-secondary prose prose-sm max-w-none prose-invert">
           <ReactMarkdown>{message.descriptionContent || ''}</ReactMarkdown>
         </div>
       )}
@@ -164,13 +164,13 @@ export function ChatMessageComponent({ message }: ChatMessageComponentProps) {
   switch (message.type) {
     case 'system':
       return (
-        <div className="flex justify-center py-1 msg-enter">
-          <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-surface-overlay">
-            <svg className="w-3 h-3 text-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="flex justify-center py-0.5 msg-enter">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-surface-raised border border-surface-border border-l-2 border-l-accent">
+            <svg className="w-3 h-3 text-text-tertiary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <span className="text-xs text-text-muted">{message.content}</span>
-            <span className="text-xs text-text-muted opacity-60">{timestamp}</span>
+            <span className="text-xs text-text-secondary">{message.content}</span>
+            <span className="text-xs text-text-muted">{timestamp}</span>
           </div>
         </div>
       );
@@ -181,13 +181,13 @@ export function ChatMessageComponent({ message }: ChatMessageComponentProps) {
     case 'model_thinking':
       return (
         <div className="flex items-center gap-3 py-1.5 msg-enter">
-          <div className="flex-shrink-0 w-8 h-8 rounded-full bg-accent flex items-center justify-center">
+          <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-gradient-to-br from-accent to-accent-dark flex items-center justify-center">
             <svg className="w-4 h-4 text-white animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
             </svg>
           </div>
           <div className="flex items-center gap-2 text-sm">
-            <span className="text-accent animate-pulse font-medium">Thinking...</span>
+            <span className="text-accent animate-pulse font-display font-medium">Thinking...</span>
             <span className="text-text-tertiary text-xs">
               ({message.thinkingPhase === 'initial' ? 'generating code' : 'evaluating'})
             </span>
@@ -230,22 +230,22 @@ export function ChatMessageComponent({ message }: ChatMessageComponentProps) {
       const showText = textContent.length > 0;
 
       return (
-        <div className="flex items-start gap-3 msg-enter">
+        <div className="flex items-start gap-3 msg-enter border-l-2 border-l-accent/30 pl-2 bg-surface-raised/50 rounded-r-lg py-3 pr-3">
           {/* AI Avatar */}
-          <div className="flex-shrink-0 w-8 h-8 rounded-full bg-accent flex items-center justify-center">
+          <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-gradient-to-br from-accent to-accent-dark flex items-center justify-center">
             <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
             </svg>
           </div>
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 text-xs text-text-tertiary mb-2 flex-wrap">
-              <span>{timestamp}</span>
+            <div className="flex items-center gap-2 text-xs text-text-tertiary uppercase tracking-wider mb-2 flex-wrap">
+              <span className="normal-case tracking-normal text-text-muted">{timestamp}</span>
               {message.decision && (
-                <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
+                <span className={`px-1.5 py-0.5 rounded text-xs font-display font-medium normal-case tracking-normal ${
                   message.decision === 'finish'
-                    ? 'bg-emerald-900/20 text-emerald-400 border border-emerald-800/50'
+                    ? 'bg-nv-green/10 text-nv-green border border-nv-green/20'
                     : message.decision === 'regenerate'
-                    ? 'bg-amber-900/20 text-amber-400 border border-amber-800/50'
+                    ? 'bg-accent/10 text-accent border border-accent/20'
                     : 'bg-blue-900/20 text-blue-400 border border-blue-800/50'
                 }`}>
                   {message.decision === 'finish' ? 'Finish' : message.decision === 'regenerate' ? 'Regenerate' : message.decision}
@@ -256,7 +256,7 @@ export function ChatMessageComponent({ message }: ChatMessageComponentProps) {
             {message.reasoning && <ThinkingSection content={message.reasoning} />}
 
             {showText && (
-              <div className="text-sm text-text-primary mb-3 prose prose-sm max-w-none prose-warm">
+              <div className="text-sm text-text-primary mb-3 prose prose-sm max-w-none prose-invert">
                 <ReactMarkdown>{textContent}</ReactMarkdown>
               </div>
             )}
@@ -276,32 +276,37 @@ export function ChatMessageComponent({ message }: ChatMessageComponentProps) {
     case 'code_execution': {
       const hasOutput = message.stdout || message.stderr;
       const hasExecutionSteps = message.executionSteps && message.executionSteps.length > 0;
+      const execBorderColor = message.isExecuting
+        ? 'border-l-accent'
+        : message.success
+        ? 'border-l-nv-green/50'
+        : 'border-l-red-500/50';
 
       return (
-        <div className="flex items-start gap-3 msg-enter">
+        <div className={`flex items-start gap-3 msg-enter border-l-2 ${execBorderColor} pl-2`}>
           {/* Status dot */}
           <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-surface-sunken flex items-center justify-center">
             {message.isExecuting ? (
-              <svg className="w-4 h-4 text-amber-400 animate-spin" fill="none" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 text-accent animate-spin" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
               </svg>
             ) : (
-              <span className={`inline-block w-2 h-2 rounded-full ${message.success ? 'bg-emerald-400' : 'bg-red-400'}`} />
+              <span className={`inline-block w-2 h-2 rounded-full ${message.success ? 'bg-nv-green' : 'bg-red-400'}`} />
             )}
           </div>
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 text-xs text-text-tertiary mb-1.5">
-              <span className="font-mono text-text-muted">$</span>
-              <span>Block {(message.blockIndex ?? 0) + 1}</span>
+            <div className="flex items-center gap-2 text-xs text-text-tertiary uppercase tracking-wider mb-1.5">
+              <span className="font-mono text-accent">$</span>
+              <span className="font-display">Block {(message.blockIndex ?? 0) + 1}</span>
               {message.isExecuting ? (
-                <span className="text-amber-400 font-medium">Running...</span>
+                <span className="text-accent font-display font-medium normal-case tracking-normal">Running...</span>
               ) : message.success ? (
-                <span className="text-emerald-400 font-medium">Completed</span>
+                <span className="text-nv-green font-display font-medium normal-case tracking-normal">Completed</span>
               ) : (
-                <span className="text-red-400 font-medium">Failed</span>
+                <span className="text-red-400 font-display font-medium normal-case tracking-normal">Failed</span>
               )}
-              <span className="text-text-tertiary">{timestamp}</span>
+              <span className="text-text-muted normal-case tracking-normal">{timestamp}</span>
             </div>
 
             {/* Execution Details Dropdown */}
@@ -319,16 +324,16 @@ export function ChatMessageComponent({ message }: ChatMessageComponentProps) {
               <div className="space-y-2 mt-2">
                 {message.stdout && (
                   <div className="text-xs">
-                    <div className="text-text-tertiary font-medium mb-1">stdout</div>
-                    <pre className="bg-surface-sunken p-3 rounded-lg text-sand-200 overflow-x-auto font-mono text-xs whitespace-pre-wrap max-h-48 overflow-y-auto border border-surface-border">
+                    <div className="text-xs text-text-tertiary uppercase tracking-wider font-display font-medium mb-1">stdout</div>
+                    <pre className="bg-surface-sunken p-3 rounded-lg text-text-secondary overflow-x-auto font-mono text-xs whitespace-pre-wrap max-h-48 overflow-y-auto border border-surface-border">
                       {message.stdout}
                     </pre>
                   </div>
                 )}
                 {message.stderr && (
                   <div className="text-xs">
-                    <div className="text-red-400 font-medium mb-1">stderr</div>
-                    <pre className="bg-red-900/20 p-3 rounded-lg text-red-300 overflow-x-auto font-mono text-xs whitespace-pre-wrap max-h-48 overflow-y-auto border border-red-800/50">
+                    <div className="text-red-400 font-display font-medium mb-1">stderr</div>
+                    <pre className="bg-red-950/30 p-3 rounded-lg text-red-400 overflow-x-auto font-mono text-xs whitespace-pre-wrap max-h-48 overflow-y-auto border border-red-800/20">
                       {message.stderr}
                     </pre>
                   </div>
@@ -345,18 +350,20 @@ export function ChatMessageComponent({ message }: ChatMessageComponentProps) {
     case 'visual_feedback':
       return (
         <div className="flex items-start gap-3 msg-enter">
-          <div className="flex-shrink-0 w-8 h-8 rounded-full bg-teal-600 flex items-center justify-center">
+          <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-gradient-to-br from-accent to-accent-dark flex items-center justify-center">
             <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
           </div>
           <div className="flex-1">
-            <div className="text-xs text-text-tertiary mb-2">{timestamp}</div>
+            <div className="text-xs text-text-muted mb-2">{timestamp}</div>
             {message.content && (
               <div className="text-sm text-text-secondary mb-2">{message.content}</div>
             )}
             {message.imageBase64 && (
-              <ImageViewer src={message.imageBase64} alt="Visual feedback" />
+              <div className="border border-surface-border rounded-md overflow-hidden">
+                <ImageViewer src={message.imageBase64} alt="Visual feedback" />
+              </div>
             )}
           </div>
         </div>
@@ -365,23 +372,23 @@ export function ChatMessageComponent({ message }: ChatMessageComponentProps) {
     case 'image_analysis':
       return (
         <div className="flex items-start gap-3 msg-enter">
-          <div className="flex-shrink-0 w-8 h-8 rounded-full bg-amber-600 flex items-center justify-center">
+          <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-gradient-to-br from-accent to-accent-dark flex items-center justify-center">
             <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
             </svg>
           </div>
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 text-xs text-text-tertiary mb-2 flex-wrap">
-              <span>{timestamp}</span>
-              <span className="px-1.5 py-0.5 rounded bg-amber-900/20 text-amber-400 border border-amber-800/50 font-medium">
+            <div className="flex items-center gap-2 text-xs text-text-tertiary uppercase tracking-wider mb-2 flex-wrap">
+              <span className="normal-case tracking-normal text-text-muted">{timestamp}</span>
+              <span className="px-1.5 py-0.5 rounded bg-accent/10 text-accent border border-accent/20 font-display font-medium normal-case tracking-normal">
                 {message.analysisType === 'state_comparison' ? 'State Comparison' : 'Initial Description'}
               </span>
               {message.modelUsed && (
-                <span className="text-text-tertiary">via {message.modelUsed}</span>
+                <span className="text-text-tertiary normal-case tracking-normal">via {message.modelUsed}</span>
               )}
             </div>
-            <div className="text-sm text-text-primary bg-amber-900/20 rounded-lg p-4 border border-amber-800/30 prose prose-sm max-w-none prose-warm">
+            <div className="text-sm text-text-primary bg-surface-raised rounded-lg p-4 border border-surface-border prose prose-sm max-w-none prose-invert">
               <ReactMarkdown>{message.content || ''}</ReactMarkdown>
             </div>
           </div>
@@ -390,10 +397,10 @@ export function ChatMessageComponent({ message }: ChatMessageComponentProps) {
 
     case 'user_prompt':
       return (
-        <div className="flex items-start gap-3 justify-end msg-enter">
-          <div className="max-w-[70%]">
-            <div className="text-xs text-text-tertiary mb-1 text-right">{timestamp}</div>
-            <div className="bg-accent text-white rounded-2xl rounded-br-md px-4 py-3 text-sm break-words shadow-sm">
+        <div className="flex items-start gap-3 justify-end msg-enter-right">
+          <div className="max-w-[90%] sm:max-w-[70%]">
+            <div className="text-xs text-text-muted mb-1 text-right">{timestamp}</div>
+            <div className="bg-accent/8 border border-accent/15 text-text-primary rounded-xl rounded-br-sm px-4 py-3 text-sm break-words">
               {message.content}
             </div>
           </div>
@@ -403,14 +410,14 @@ export function ChatMessageComponent({ message }: ChatMessageComponentProps) {
     case 'completion': {
       const isSuccess = Boolean(message.success);
       return (
-        <div className={`p-4 rounded-xl border msg-enter ${
+        <div className={`p-5 rounded-lg border msg-enter animate-scale-in ${
           isSuccess
-            ? 'bg-emerald-900/20 border-emerald-800/50'
-            : 'bg-red-900/20 border-red-800/50'
+            ? 'bg-nv-green/5 border-nv-green/20'
+            : 'bg-red-950/30 border-red-800/20'
         }`}>
           <div className="flex items-center gap-3">
             <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-              isSuccess ? 'bg-emerald-600' : 'bg-red-600'
+              isSuccess ? 'bg-gradient-to-br from-nv-green to-nv-green-light' : 'bg-red-600'
             }`}>
               <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 {isSuccess ? (
@@ -421,7 +428,7 @@ export function ChatMessageComponent({ message }: ChatMessageComponentProps) {
               </svg>
             </div>
             <div>
-              <div className={`font-semibold text-sm ${isSuccess ? 'text-emerald-400' : 'text-red-400'}`}>
+              <div className={`font-display font-bold text-sm ${isSuccess ? 'text-nv-green' : 'text-red-400'}`}>
                 {isSuccess ? 'Trial Completed Successfully' : 'Trial Failed'}
               </div>
               <div className="text-xs text-text-tertiary mt-0.5">
@@ -437,7 +444,7 @@ export function ChatMessageComponent({ message }: ChatMessageComponentProps) {
                 </svg>
                 View full summary
               </summary>
-              <pre className="mt-2 text-xs bg-surface-sunken p-3 rounded-lg overflow-x-auto whitespace-pre-wrap text-sand-300 border border-surface-border">
+              <pre className="mt-2 text-xs bg-surface-sunken p-3 rounded-lg overflow-x-auto whitespace-pre-wrap text-text-secondary border border-surface-border">
                 {message.summary}
               </pre>
             </details>
@@ -448,7 +455,7 @@ export function ChatMessageComponent({ message }: ChatMessageComponentProps) {
 
     case 'error':
       return (
-        <div className="bg-red-900/20 border border-red-800/50 rounded-xl p-4 msg-enter">
+        <div className="bg-red-950/30 border border-red-800/20 rounded-xl p-5 msg-enter animate-scale-in">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-red-600 flex items-center justify-center">
               <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -456,8 +463,8 @@ export function ChatMessageComponent({ message }: ChatMessageComponentProps) {
               </svg>
             </div>
             <div>
-              <div className="font-semibold text-sm text-red-400">Error</div>
-              <div className="text-sm text-red-300">{message.error}</div>
+              <div className="font-display font-bold text-sm text-red-400">Error</div>
+              <div className="text-sm text-red-400">{message.error}</div>
             </div>
           </div>
         </div>

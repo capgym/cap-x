@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 interface ImageViewerProps {
   src: string;
@@ -8,6 +8,13 @@ interface ImageViewerProps {
 
 export function ImageViewer({ src, alt, className }: ImageViewerProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const overlayRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (isExpanded && overlayRef.current) {
+      overlayRef.current.focus();
+    }
+  }, [isExpanded]);
 
   // Handle both data URIs and plain base64 strings
   const imageSrc = src.startsWith('data:') || src.startsWith('http')
@@ -19,21 +26,26 @@ export function ImageViewer({ src, alt, className }: ImageViewerProps) {
       <img
         src={imageSrc}
         alt={alt}
-        className={className || "rounded-lg max-w-full max-h-64 object-contain cursor-pointer hover:opacity-90 transition-opacity border border-surface-border"}
+        className={className || "rounded-md max-w-full max-h-64 object-contain cursor-pointer hover:opacity-90 transition-opacity border border-surface-border"}
         onClick={() => setIsExpanded(true)}
       />
 
       {/* Modal for expanded view */}
       {isExpanded && (
         <div
+          ref={overlayRef}
           className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
           onClick={() => setIsExpanded(false)}
+          onKeyDown={(e) => { if (e.key === 'Escape') setIsExpanded(false); }}
+          role="dialog"
+          aria-modal="true"
+          tabIndex={-1}
         >
           <div className="relative max-w-[90vw] max-h-[90vh]">
             <img
               src={imageSrc}
               alt={alt}
-              className="max-w-full max-h-[90vh] object-contain rounded-lg"
+              className="max-w-full max-h-[90vh] object-contain rounded-md"
             />
             <button
               onClick={() => setIsExpanded(false)}

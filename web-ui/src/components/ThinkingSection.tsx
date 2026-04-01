@@ -34,8 +34,8 @@ export function ThinkingSection({ content }: ThinkingSectionProps) {
       </button>
 
       {isExpanded && (
-        <div className="mt-2 ml-5 pl-3 border-l-2 border-accent/30 bg-surface-raised/50 rounded-r-lg p-3">
-          <div className="text-sm text-text-secondary leading-relaxed prose prose-sm max-w-none prose-warm">
+        <div className="mt-2 ml-5 pl-3 border-l-2 border-accent/30 bg-surface-raised/50 rounded-r-md p-3">
+          <div className="text-sm text-text-secondary leading-relaxed prose prose-sm max-w-none prose-invert">
             <ReactMarkdown>{cleanContent}</ReactMarkdown>
           </div>
         </div>

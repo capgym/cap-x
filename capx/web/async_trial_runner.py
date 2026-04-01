@@ -497,9 +497,29 @@ async def run_trial_async(
                     finally:
                         session.execution_thread_id = None
 
-                (obs_next, reward, terminated, truncated, info_step), post_step_frame = await run_in_env_thread(
-                    _step_render_with_interrupt, code
-                )
+                exec_timeout = getattr(session, 'execution_timeout', 180)
+                try:
+                    (obs_next, reward, terminated, truncated, info_step), post_step_frame = await asyncio.wait_for(
+                        run_in_env_thread(_step_render_with_interrupt, code),
+                        timeout=exec_timeout,
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning(f"Code block {code_block_idx} timed out after {exec_timeout}s")
+                    await emit(CodeExecutionResultEvent(
+                        session_id=session.session_id,
+                        block_index=code_block_idx,
+                        success=False,
+                        stdout="",
+                        stderr=f"Execution timed out after {exec_timeout} seconds. The code may be stuck in a loop or waiting for an unreachable target.",
+                        reward=0.0,
+                        task_completed=False,
+                    ))
+                    # Reset env for next attempt
+                    try:
+                        obs, _ = await run_in_env_thread(lambda: env.reset())
+                    except Exception:
+                        pass
+                    break  # Exit code block loop, go to multi-turn decision
             finally:
                 # Finalize execution logger and get history
                 exec_history = execution_logger.finalize_execution_context()
