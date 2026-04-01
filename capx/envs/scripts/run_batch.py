@@ -143,21 +143,19 @@ class BatchLaunchArgs:
             # "nvidia/openai/gpt-oss-120b", # Open source models
             # "Qwen/Qwen2.5-Coder-7B-Instruct",
             # "openai/gpt-oss-20b",
-            # "deepseek/deepseek-v3-0324",
+            # "deepseek/deepseek-v3.2",
             # "deepseek/deepseek-r1-0528",
             # "deepseek/deepseek-r1",
-            # "qwen/qwen-235b-a22b",
-            # "moonshotai/kimi-k2-instruct",
+            # "qwen/qwen3.5-122b-a10b",
+            # "moonshotai/kimi-k2",
             # "google/gemini-3.1-pro-preview", # Closed source models
-            # "google/gemini-3-pro",
             # "google/gemini-2.5-flash-lite",
             # "anthropic/claude-haiku-4-5",
             "anthropic/claude-opus-4-5",
-            # "openai/gpt-5.2",
-            # "openai/gpt-5.1",
+            # "openai/gpt-5.4",
+            # "openai/gpt-5.4",
             # "openai/o1",
             # "openai/o4-mini",
-            # "openai/gpt-5.1-codex",
         ]
     )
     """Names of the models to query on the vLLM server."""

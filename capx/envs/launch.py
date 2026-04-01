@@ -49,7 +49,7 @@ class LaunchArgs:
     server_url: str = "http://127.0.0.1:8110/chat/completions"
     """URL of the vLLM server's chat completions endpoint."""
 
-    model: str = "google/gemini-3-pro"
+    model: str = "google/gemini-3.1-pro-preview"
     """Name of the model to query on from the server_url."""
 
     temperature: float = 1.0
@@ -80,7 +80,7 @@ class LaunchArgs:
     use_legacy_multi_turn_decision_prompt: bool | None = None
     """Whether to use the legacy multi-turn decision prompt."""
 
-    visual_differencing_model: str | None = "google/gemini-3-pro"
+    visual_differencing_model: str | None = "google/gemini-3.1-pro-preview"
     """Model to use for visual differencing."""
 
     visual_differencing_model_server_url: str | None = (

@@ -44,7 +44,7 @@ class LiberoBatchLaunchArgs:
     # Models to run (copied from run_batch.py default)
     models: list[str] = field(
         default_factory=lambda: [
-            # "openai/gpt-5.2",
+            # "openai/gpt-5.4",
             "google/gemini-3.1-pro-preview"
         ]
     )

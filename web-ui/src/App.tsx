@@ -211,7 +211,6 @@ function App() {
                     >
                       <optgroup label="Google">
                         <option value="google/gemini-3.1-pro-preview">Gemini 3.1 Pro Preview</option>
-                        <option value="google/gemini-3.1-pro">Gemini 3.1 Pro</option>
                         <option value="google/gemini-2.5-flash-lite">Gemini 2.5 Flash Lite</option>
                       </optgroup>
                       <optgroup label="Anthropic">
@@ -220,17 +219,15 @@ function App() {
                         <option value="anthropic/claude-haiku-4-5">Claude Haiku 4.5</option>
                       </optgroup>
                       <optgroup label="OpenAI">
-                        <option value="openai/gpt-5.2">GPT 5.2</option>
-                        <option value="openai/gpt-5.1">GPT 5.1</option>
-                        <option value="openai/gpt-5.1-codex">GPT 5.1 Codex</option>
+                        <option value="openai/gpt-5.4">GPT 5.4</option>
                         <option value="openai/o4-mini">O4 Mini</option>
                         <option value="openai/o1">O1</option>
                       </optgroup>
                       <optgroup label="Open Source">
-                        <option value="deepseek/deepseek-v3-0324">DeepSeek V3</option>
+                        <option value="deepseek/deepseek-v3.2">DeepSeek V3</option>
                         <option value="deepseek/deepseek-r1-0528">DeepSeek R1</option>
-                        <option value="qwen/qwen-235b-a22b">Qwen 235B</option>
-                        <option value="moonshotai/kimi-k2-instruct">Kimi K2</option>
+                        <option value="qwen/qwen3.5-122b-a10b">Qwen 3.5 122B</option>
+                        <option value="moonshotai/kimi-k2">Kimi K2</option>
                       </optgroup>
                     </select>
                   </div>
