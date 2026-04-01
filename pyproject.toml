@@ -19,6 +19,7 @@ classifiers = [
 dependencies = [
   "gymnasium>=0.29",
   "numpy>=1.26",
+  "cffi==1.17.1",
   "torch>=2.8",
   "torchvision>=0.23",
   "tyro>=0.8.5",
@@ -29,38 +30,43 @@ dependencies = [
   "imageio[ffmpeg]",
   "requests",
   "tqdm",
-  "h5py",
-  "einops",
-  "decord",
-  "pycocotools",
+  "dm_env",
   "pyyaml",
   "omegaconf",
+  "ruff",
   "open3d",
+  "h5py",
   "pyroki @ git+https://github.com/chungmin99/pyroki.git",
   "robot_descriptions>=1.16.0",
   "yourdfpy>=0.0.56",
   "viser>=0.2.0",
   "trimesh>=4.4.0",
+  "gymnasium-robotics>=1.2.4",
+  "mujoco>=3.1.6",
   "imageio[ffmpeg]>=0.6.0",
   "sam3",
+  "decord",
+  "pycocotools",
+  "huggingface_hub",
   "msgpack_numpy",
   "ray==2.48.0",
   "mediapy>=1.2.5",
   "uvicorn",
   "fastapi",
+  "gunicorn",
+  "einops",
   "transformers",
   "openai",
   "pyrender",
   "opencv-python-headless",
-  "pillow>=10",
-  "cloudpickle",
+  "ninja>=1.13.0",
 ]
 
 [project.optional-dependencies]
 dev = [
   "pytest>=8",
   "pytest-timeout>=2.3",
-  "ruff",
+  "ruff>=0.5",
   "mypy>=1.10",
   "pillow>=10",
   "requests>=2.32",
@@ -69,15 +75,20 @@ dev = [
 libero = [
   "libero",
   "robosuite",
+  # "hydra-core==1.2.0",
+  # "numpy==1.22.4",
+  # "wandb==0.13.1",
   "easydict==1.9",
+  # "transformers==4.21.1",
+  # "opencv-python==4.6.0.66",
   "robomimic==0.2.0",
   "einops==0.4.1",
   "thop==0.1.1-2209072238",
   "bddl==1.0.1",
   "future==0.18.2",
+  # "matplotlib==3.5.3",
   "cloudpickle==2.1.0",
   "gym==0.25.2",
-  "scikit-learn",
 ]
 robosuite = [
   "robosuite"
@@ -174,7 +185,7 @@ contact-graspnet-pytorch = ["numpy"]
 nvidia-curobo = ["torch"]
 
 [tool.uv.workspace]
-exclude = [
+members = [
     "capx/third_party/b1k",
 ]
 

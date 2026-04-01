@@ -2,16 +2,67 @@
 
 Skills are extracted from successful trial code, tracked by frequency,
 and promoted to the active library when they appear in multiple tasks.
+
+The library supports two modes:
+  1. **Online evolution** — skills are extracted per-trial during evaluation
+     when ``evolve_skill_library: true`` is set in the YAML config.
+  2. **Batch curation** — ``scripts/eval_analysis/compile_skill_library.py``
+     aggregates functions across experiments and uses an LLM to curate
+     the final library.  See :meth:`SkillLibrary.curate_with_llm`.
 """
 
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
 from capx.skills.extractor import extract_functions
+
+# Patterns that indicate task-specific functions (should not be promoted).
+# Matches the filtering in scripts/eval_analysis/compile_skill_library.py.
+TASK_SPECIFIC_PATTERNS = [
+    r"cube", r"stack", r"lift", r"wipe", r"spill",
+    r"place_.*_on", r"pick_.*_up", r"grab_the", r"move_to_goal",
+]
+
+# LLM prompt used by compile_skill_library.py and curate_with_llm().
+# Kept here as the canonical version so both online and batch paths
+# can reference it.
+SKILL_LIBRARY_PROMPT = """\
+You are an expert robotics software engineer curating a reusable skill library.
+
+Below are function definitions extracted from successful robot manipulation \
+code generations across multiple tasks and models.
+These functions were composed by LLM coding agents to solve various \
+manipulation tasks using a reduced/low-level robotics API.
+
+Your task is to:
+1. Identify the MOST USEFUL and REUSABLE functions that could form a \
+general-purpose skill library
+2. Group similar functions into categories (e.g., perception, motion, \
+grasping, coordinate transforms)
+3. For each category, select the BEST implementation(s) — prefer \
+well-documented, general-purpose versions
+4. Exclude task-specific or overly narrow functions
+5. Note any functions that appear frequently — this indicates high utility
+
+Output format:
+- Organize by category
+- For each selected function, explain WHY it's useful and reusable
+- Include the full function code, along with proper Python docstring and \
+type hints, return types, etc.
+- Note how many times similar functions appeared (popularity)
+
+Focus on functions that would be valuable additions to a robotics \
+manipulation toolkit.
+
+---
+EXTRACTED FUNCTIONS (with occurrence counts and sources):
+{functions}
+"""
 
 
 @dataclass
@@ -101,15 +152,29 @@ class SkillLibrary:
     # Promotion & querying
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _is_task_specific(name: str) -> bool:
+        """Check if a function name matches task-specific patterns."""
+        return any(re.search(p, name, re.IGNORECASE) for p in TASK_SPECIFIC_PATTERNS)
+
+    @staticmethod
+    def _is_trivial(code: str, min_lines: int = 3) -> bool:
+        """Check if a function is too short to be useful."""
+        return len(code.strip().splitlines()) < min_lines
+
     def get_promoted_skills(self, min_occurrences: int = 2) -> dict[str, str]:
         """Return skills that qualify for promotion (frequently occurring).
 
-        Auto-promotes skills meeting *min_occurrences* and returns a mapping
-        of ``{name: code}`` for all promoted skills.
+        Auto-promotes skills meeting *min_occurrences* that are not
+        task-specific or trivial, and returns a mapping of
+        ``{name: code}`` for all promoted skills.
         """
-        # Auto-promote based on occurrence threshold
         for skill in self.skills.values():
-            if skill.occurrences >= min_occurrences:
+            if (
+                skill.occurrences >= min_occurrences
+                and not self._is_task_specific(skill.name)
+                and not self._is_trivial(skill.code)
+            ):
                 skill.promoted = True
 
         return {
@@ -185,6 +250,59 @@ class SkillLibrary:
         """Promote a skill to the active library."""
         if name in self.skills:
             self.skills[name].promoted = True
+
+    # ------------------------------------------------------------------
+    # Reporting
+    # ------------------------------------------------------------------
+
+    # ------------------------------------------------------------------
+    # LLM curation (batch mode)
+    # ------------------------------------------------------------------
+
+    def format_for_prompt(self) -> str:
+        """Format all skills for the LLM curation prompt.
+
+        Mirrors ``format_functions_for_prompt()`` from the original
+        ``scripts/eval_analysis/compile_skill_library.py``.
+        """
+        lines: list[str] = []
+        for name in sorted(self.skills):
+            skill = self.skills[name]
+            lines.append(f"### {name}")
+            lines.append(f"Occurrences: {skill.occurrences}")
+            lines.append(f"Source tasks: {', '.join(skill.source_tasks)}")
+            lines.append(f"```python\n{skill.code}\n```")
+            lines.append("")
+        return "\n".join(lines)
+
+    def curate_with_llm(
+        self,
+        server_url: str = "http://127.0.0.1:8110/chat/completions",
+        model: str = "google/gemini-3.1-pro-preview",
+    ) -> str:
+        """Call an LLM to curate the skill library.
+
+        Uses :data:`SKILL_LIBRARY_PROMPT` — the same prompt from the
+        original ``compile_skill_library.py`` — to organize skills by
+        category, select best implementations, and explain reusability.
+
+        Returns the raw LLM response text (curated library).
+        """
+        import requests
+
+        prompt = SKILL_LIBRARY_PROMPT.format(functions=self.format_for_prompt())
+        resp = requests.post(
+            server_url,
+            json={
+                "model": model,
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 8192,
+                "temperature": 0.2,
+            },
+            timeout=120,
+        )
+        resp.raise_for_status()
+        return resp.json()["choices"][0]["message"]["content"]
 
     # ------------------------------------------------------------------
     # Reporting
