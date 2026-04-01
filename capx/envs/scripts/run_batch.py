@@ -154,10 +154,9 @@ class BatchLaunchArgs:
             # "anthropic/claude-haiku-4-5",
             "anthropic/claude-opus-4-5",
             # "openai/gpt-5.2",
-            # "openai/gpt-5.1"
+            # "openai/gpt-5.1",
             # "openai/o1",
             # "openai/o4-mini",
-            # "openai/gpt-5.1-codex",
             # "openai/gpt-5.1-codex",
         ]
     )
