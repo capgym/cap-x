@@ -52,7 +52,7 @@ uv sync
 
 ### Simulator-specific setup
 
-Pick **one** simulator family to install — Robosuite and LIBERO conflict in the same environment.
+Pick **one** simulator family to install, as Robosuite (1.5.0) and LIBERO (`robosuite==1.4.0`) would be in conflict.
 
 #### Robosuite
 
@@ -62,7 +62,7 @@ uv sync --extra robosuite
 
 #### LIBERO-PRO
 
-LIBERO requires a **separate virtual environment** (its Robosuite fork conflicts with the standard one).
+LIBERO requires a **separate virtual environment**.
 
 ```bash
 uv venv .venv-libero --python 3.12
