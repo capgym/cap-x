@@ -15,6 +15,7 @@ Shankar Sastry<sup>2</sup>, Yuke Zhu<sup>1</sup>, Ken Goldberg<sup>&dagger;,2</s
 
 <sup>&#42;</sup>Equal contribution &ensp; <sup>&dagger;</sup>Equal advising
 
+![ui](https://github.com/user-attachments/assets/85f128e7-5305-4d1b-8078-033b35091971)
 
 
 ---
