@@ -265,7 +265,7 @@ def main(
     if hasattr(_MODEL, "to") and device:
         _MODEL = _MODEL.to(device)
 
-    _PROCESSOR = Sam3Processor(_MODEL, confidence_threshold=0.0)
+    _PROCESSOR = Sam3Processor(_MODEL, device=device, confidence_threshold=0.0)
     logger.info(f"SAM3 model loaded on {device}. Starting Server...")
 
     uvicorn.run(app, host=host, port=port)
