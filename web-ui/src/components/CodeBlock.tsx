@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import hljs from 'highlight.js/lib/core';
 import python from 'highlight.js/lib/languages/python';
 // Custom syntax theme in index.css — no base theme import needed
@@ -14,16 +14,20 @@ interface CodeBlockProps {
 }
 
 export function CodeBlock({ code, language = 'python', compact = false, collapsible = false, defaultCollapsed = false }: CodeBlockProps) {
-  const codeRef = useRef<HTMLElement>(null);
   const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
   const [copied, setCopied] = useState(false);
+  const [highlightedHtml, setHighlightedHtml] = useState<string>(() => {
+    if (!defaultCollapsed) {
+      return hljs.highlight(code, { language }).value;
+    }
+    return '';
+  });
 
   useEffect(() => {
-    if (codeRef.current && !isCollapsed) {
-      codeRef.current.removeAttribute('data-highlighted');
-      hljs.highlightElement(codeRef.current);
+    if (!isCollapsed) {
+      setHighlightedHtml(hljs.highlight(code, { language }).value);
     }
-  }, [code, isCollapsed]);
+  }, [code, isCollapsed, language]);
 
   const lines = code.split('\n');
   const lineCount = lines.length;
@@ -112,9 +116,10 @@ export function CodeBlock({ code, language = 'python', compact = false, collapsi
             ))}
           </div>
           <pre className={`pl-12 pr-4 py-1 pb-3 overflow-x-auto ${compact ? 'text-xs' : 'text-sm'}`}>
-            <code ref={codeRef} className={`language-${language} leading-5`}>
-              {code}
-            </code>
+            <code
+              className={`language-${language} leading-5`}
+              dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+            />
           </pre>
         </div>
         {collapsible && (
