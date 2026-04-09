@@ -114,11 +114,8 @@ class SegmentResponse(BaseModel):
 
 def _do_segment(pil_image: Image.Image, text_prompt: str):
     """Blocking SAM3 text-prompt segmentation (runs on GPU thread)."""
-    dtype_context = (
-        torch.autocast(_DEVICE, dtype=torch.bfloat16)
-        if "cuda" in _DEVICE
-        else torch.autocast("cpu")
-    )
+    _device_type = "cuda" if "cuda" in _DEVICE else "cpu"
+    dtype_context = torch.autocast(_device_type, dtype=torch.bfloat16)
 
     with dtype_context:
         inference_state = _PROCESSOR.set_image(pil_image)
@@ -179,11 +176,8 @@ async def segment(req: SegmentRequest):
 
 def _do_segment_point(pil_image: Image.Image, point_coords_tuple: tuple[float, float]):
     """Blocking SAM3 point-prompt segmentation (runs on GPU thread)."""
-    dtype_context = (
-        torch.autocast(_DEVICE, dtype=torch.bfloat16)
-        if "cuda" in _DEVICE
-        else torch.autocast("cpu")
-    )
+    _device_type = "cuda" if "cuda" in _DEVICE else "cpu"
+    dtype_context = torch.autocast(_device_type, dtype=torch.bfloat16)
 
     with dtype_context:
         inference_state = _PROCESSOR.set_image(pil_image)
@@ -252,6 +246,13 @@ def main(
     if torch.cuda.is_available():
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.backends.cudnn.allow_tf32 = True
+        # Set the default CUDA device so all tensor allocations inside
+        # build_sam3_image_model and Sam3Processor use the correct device.
+        # Without this, internal tensors default to cuda:0 while model
+        # weights are on the specified device, causing device mismatch errors.
+        if "cuda" in device:
+            device_idx = int(device.split(":")[-1]) if ":" in device else 0
+            torch.cuda.set_device(device_idx)
 
     logger.info("Loading SAM3 model...")
     try:
@@ -264,7 +265,7 @@ def main(
     if hasattr(_MODEL, "to") and device:
         _MODEL = _MODEL.to(device)
 
-    _PROCESSOR = Sam3Processor(_MODEL, confidence_threshold=0.0)
+    _PROCESSOR = Sam3Processor(_MODEL, device=device, confidence_threshold=0.0)
     logger.info(f"SAM3 model loaded on {device}. Starting Server...")
 
     uvicorn.run(app, host=host, port=port)
