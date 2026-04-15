@@ -44,8 +44,6 @@ git submodule update --init --recursive
 # Install uv (if not present)
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-uv python install 3.10 && uv venv -p 3.10
-
 # Base install
 uv sync
 ```
