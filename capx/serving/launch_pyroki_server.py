@@ -2,20 +2,19 @@ from __future__ import annotations
 
 import asyncio
 import functools
-import json
 import logging
-from functools import lru_cache
-from pathlib import Path
-from typing import Any, List
+from typing import Any
 
 import numpy as np
 import pyroki as pk  # type: ignore
+import tyro
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from scipy.spatial.transform import Rotation, Slerp
 
 import capx.integrations.motion.pyroki_snippets as pks
+from capx.integrations.motion.pyroki_context import get_pyroki_context
 
 
 def slerp_quaternions(
@@ -272,18 +271,9 @@ def init_pyroki_server(
     global _ROBOT, _ROBOT_COLL, _TARGET_LINK
 
     logger.info(f"Loading robot URDF '{robot_urdf_name}' with Pyroki...")
-
-    from robot_descriptions.loaders.yourdfpy import load_robot_description
-
-    urdf = set_min_distance_from_limits(load_robot_description(robot_urdf_name))
-
-    _ROBOT = pk.Robot.from_urdf(urdf)
-    # _ROBOT_COLL = pk.collision.RobotCollision.from_urdf(urdf)
-    sphere_decomposition = json.load(open(Path(__file__).parent / "assets" / "panda_spheres.json"))
-    _ROBOT_COLL = pk.collision.RobotCollision.from_sphere_decomposition(
-        sphere_decomposition=sphere_decomposition,
-        urdf=urdf,
-    )
+    ctx = get_pyroki_context(robot_urdf_name, target_link_name=target_link_name)
+    _ROBOT = ctx.robot
+    _ROBOT_COLL = ctx.robot_coll
     _TARGET_LINK = target_link_name
 
     logger.info("PyRoki loaded and ready!")
@@ -389,4 +379,4 @@ def main(
 
 
 if __name__ == "__main__":
-    main()
+    tyro.cli(main)

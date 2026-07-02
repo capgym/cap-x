@@ -13,6 +13,11 @@ env/
 .capx_skills.json
 .pytest_cache/
 .ruff_cache/
+.uv-cache/
+.pip-cache/
+.matplotlib-cache/
+capx/model_weights/
+capx/third_party/unitree_sdk2_python/
 
 scripts/nv_*
 # Build

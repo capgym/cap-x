@@ -237,6 +237,7 @@ def main(
     device: str = "cuda",
     port: int = 8114,
     host: str = "127.0.0.1",
+    checkpoint_path: str | None = None,
 ):
     global _MODEL, _PROCESSOR, _DEVICE
 
@@ -256,8 +257,11 @@ def main(
 
     logger.info("Loading SAM3 model...")
     try:
-        # Assuming build_sam3_image_model loads default checkpoint
-        _MODEL = build_sam3_image_model(enable_inst_interactivity=True)
+        _MODEL = build_sam3_image_model(
+            checkpoint_path=checkpoint_path,
+            load_from_HF=checkpoint_path is None,
+            enable_inst_interactivity=True,
+        )
     except Exception as e:
         logger.error(f"Error building SAM3 model: {e}")
         raise
