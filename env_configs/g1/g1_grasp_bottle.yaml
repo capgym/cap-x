@@ -1,0 +1,61 @@
+# Usage:
+#   export CAPX_G1_DRY_RUN=false
+#   uv run --no-sync --active capx/envs/launch.py --config-path env_configs/g1/g1_grasp_bottle.yaml --num-workers 1
+
+env:
+  _target_: capx.envs.tasks.unitree_g1.grasp_bottle.UnitreeG1GraspBottleCodeEnv
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    low_level:
+      _target_: capx.envs.simulators.g1_real.G1RealLowLevel
+      network_interface: enx6c1ff7c1192d
+      dry_run: null
+      observation_server_port: 9000
+      wait_for_observation_on_reset: false
+      sam3_mask_popup: true
+      grasp_debug_visualization: true
+      grasp_debug_output_dir: outputs/g1_grasp_bottle/grasp_debug
+      grasp_debug_approach_distance: 0.1
+      write_timeout: 2.0
+      enable_dex3: true
+      dex3_hand_side: right
+      dex3_hand_cmd_topic: rt/dex3/right/cmd
+      dex3_hand_state_topic: rt/lf/dex3/right/state
+      joint_interpolation_steps: 50
+      # Lift the right arm out to the robot's right side before the first Cartesian grasp move.
+      # Joint order: shoulder pitch, shoulder roll, shoulder yaw, elbow, wrist roll, wrist pitch, wrist yaw.
+      pregrasp_side_before_first_pose: true
+      pregrasp_side_joints: [0.0, -1.25, 0.0, 1.1, 0.0, 0.0, 0.0]
+    privileged: false
+    enable_render: false
+    viser_debug: false
+    apis:
+      - G1RealControlApi
+      - G1CameraApi
+
+api_servers:
+  - _target_: capx.serving.launch_sam3_server.main
+    device: cuda
+    port: 8114
+    host: 127.0.0.1
+    checkpoint_path: capx/model_weights/sam3/sam3.pt
+
+  - _target_: capx.serving.launch_contact_graspnet_server.main
+    port: 8115
+    host: 127.0.0.1
+
+  - _target_: capx.serving.launch_pyroki_server.main
+    port: 8116
+    host: 127.0.0.1
+    robot: env_configs/g1/g1_29dof_with_hand.urdf
+    target_link: right_hand_palm_link
+    root_link: torso_link
+    fk_position_tolerance: 0.12
+    fk_rotation_tolerance: 0.2
+
+record_video: false
+output_dir: ./outputs/g1_grasp_bottle
+
+trials: 1
+num_workers: 1
+use_oracle_code: false

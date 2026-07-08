@@ -1,0 +1,7 @@
+msgpack
+msgpack-numpy
+numpy
+opencv-python
+pyrealsense2
+pyyaml
+

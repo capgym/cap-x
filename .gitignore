@@ -18,6 +18,7 @@ env/
 .matplotlib-cache/
 capx/model_weights/
 capx/third_party/unitree_sdk2_python/
+capx/third_party/teleimager/
 
 scripts/nv_*
 # Build

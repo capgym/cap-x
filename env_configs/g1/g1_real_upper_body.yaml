@@ -1,0 +1,61 @@
+# Usage:
+#   export CAPX_G1_DRY_RUN=false
+#   uv run --no-sync --active capx/envs/launch.py --config-path env_configs/g1/g1_real_upper_body.yaml --num-workers 1
+
+env:
+  _target_: capx.envs.tasks.base.CodeExecutionEnvBase
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    low_level:
+      _target_: capx.envs.simulators.g1_real.G1RealLowLevel
+      network_interface: enx6c1ff7c1192d
+      dry_run: null
+      observation_server_port: 9000
+      wait_for_observation_on_reset: false
+      write_timeout: 2.0
+      enable_dex3: true
+      dex3_hand_side: right
+      dex3_hand_cmd_topic: rt/dex3/right/cmd
+      dex3_hand_state_topic: rt/lf/dex3/right/state
+      joint_interpolation_steps: 50
+      # Optional safety waypoint for table-top motions.
+      pregrasp_side_before_first_pose: false
+      pregrasp_side_joints: [0.0, -1.25, 0.0, 1.1, 0.0, 0.0, 0.0]
+    privileged: false
+    enable_render: false
+    viser_debug: false
+    apis:
+      - G1RealControlApi
+      - G1CameraApi
+    prompt: |
+      You are controlling the right arm of a real Unitree G1 robot as a single-arm robot.
+      Use the right Dex3 hand as the gripper; set_gripper_trigger_squeeze(trigger, squeeze) maps trigger to thumb+index and squeeze to thumb+middle, while trigger=1 and squeeze=1 makes a three-finger grasp.
+      For visual grasps, prefer sample_grasp_center_pose(object_name) plus grasp_at_pinch_center(pos, quat); this uses the Junhao-style front policy: contact/visual center as pinch target, fixed vertical front-palm rotation, Dex3 closed-pinch offset converted to the palm IK target, and a rate-limited streamed horizontal pregrasp-to-grasp approach that keeps Z stable. Use goto_pose(position, quaternion_wxyz) only when you intentionally target right_hand_palm_link.
+      The functions below are already imported into the execution environment. If you need numpy, import it explicitly.
+
+api_servers:
+  - _target_: capx.serving.launch_sam3_server.main
+    device: cuda
+    port: 8114
+    host: 127.0.0.1
+    checkpoint_path: capx/model_weights/sam3/sam3.pt
+
+  - _target_: capx.serving.launch_contact_graspnet_server.main
+    port: 8115
+    host: 127.0.0.1
+
+  - _target_: capx.serving.launch_pyroki_server.main
+    port: 8116
+    host: 127.0.0.1
+    robot: env_configs/g1/g1_29dof_with_hand.urdf
+    target_link: right_hand_palm_link
+    root_link: torso_link
+    fk_position_tolerance: 0.12
+    fk_rotation_tolerance: 0.2
+
+record_video: false
+output_dir: ./outputs/g1_real_upper_body
+
+trials: 1
+num_workers: 1
+use_oracle_code: false

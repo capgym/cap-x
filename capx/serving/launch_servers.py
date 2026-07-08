@@ -46,13 +46,18 @@ logger = logging.getLogger("launch_servers")
 # Maps a short server name to its launch module and resource requirements.
 # The "target" field corresponds to the ``_target_`` values found in YAML
 # configs (minus the trailing ``.main``).
+DEFAULT_SAM3_CHECKPOINT_PATH = "capx/model_weights/sam3/sam3.pt"
+
 SERVER_REGISTRY: dict[str, dict[str, Any]] = {
     "sam3": {
         "target": "capx.serving.launch_sam3_server",
         "default_port": 8114,
         "gpu_required": True,
         "gpu_memory_mb": 3000,
-        "extra_args": {"device": "cuda"},
+        "extra_args": {
+            "device": "cuda",
+            "checkpoint_path": DEFAULT_SAM3_CHECKPOINT_PATH,
+        },
     },
     "graspnet": {
         "target": "capx.serving.launch_contact_graspnet_server",

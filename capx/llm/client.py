@@ -86,6 +86,18 @@ def is_openrouter_model(model: str) -> bool:
     return model.startswith("openrouter/") or model in OPENROUTER_MODELS
 
 
+def _resolve_api_key(args: Any) -> str | None:
+    if getattr(args, "api_key", None):
+        return args.api_key
+    for env_name in ("CAPX_LLM_API_KEY", "PARATERA_API_KEY"):
+        value = os.getenv(env_name)
+        if value:
+            return value
+    if os.getenv("OPENAI_API_KEY") is not None and args.model in GPT_MODELS:
+        return os.getenv("OPENAI_API_KEY")
+    return None
+
+
 @dataclass
 class ModelQueryArgs:
     """Arguments for querying a model."""
@@ -237,10 +249,9 @@ def query_model(args: "LaunchArgs | ModelQueryArgs", prompt: list[dict]) -> str:
             "messages": prompt,
         }
     headers = {"Content-Type": "application/json"}
-    if args.api_key:
-        headers["Authorization"] = f"Bearer {args.api_key}"
-    elif os.getenv("OPENAI_API_KEY") is not None and args.model in GPT_MODELS:
-        headers["Authorization"] = f"Bearer {os.getenv('OPENAI_API_KEY')}"
+    api_key = _resolve_api_key(args)
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
     start_time = time.time()
 
     # keep calling until it works
@@ -323,10 +334,9 @@ def query_model_streaming(
         }
 
     headers = {"Content-Type": "application/json"}
-    if args.api_key:
-        headers["Authorization"] = f"Bearer {args.api_key}"
-    elif os.getenv("OPENAI_API_KEY") is not None and args.model in GPT_MODELS:
-        headers["Authorization"] = f"Bearer {os.getenv('OPENAI_API_KEY')}"
+    api_key = _resolve_api_key(args)
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
 
     full_content = ""
     full_reasoning = ""

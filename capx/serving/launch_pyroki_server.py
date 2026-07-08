@@ -157,6 +157,8 @@ app = FastAPI()
 _ROBOT = None
 _ROBOT_COLL = None
 _TARGET_LINK = None
+_FK_POSITION_TOLERANCE = 0.03
+_FK_ROTATION_TOLERANCE = 0.75
 
 
 async def _run_in_thread(fn, *args, **kwargs):
@@ -266,16 +268,37 @@ def set_min_distance_from_limits(urdf: yourdfpy.URDF, min_distance_from_limits: 
 
 
 def init_pyroki_server(
-    robot_urdf_name: str = "panda_description", target_link_name: str = "panda_hand"
+    robot_urdf_name: str = "panda_description",
+    target_link_name: str = "panda_hand",
+    root_link_name: str | None = None,
+    fk_position_tolerance: float = 0.03,
+    fk_rotation_tolerance: float = 0.75,
 ):
-    global _ROBOT, _ROBOT_COLL, _TARGET_LINK
+    global _ROBOT, _ROBOT_COLL, _TARGET_LINK, _FK_POSITION_TOLERANCE, _FK_ROTATION_TOLERANCE
 
     logger.info(f"Loading robot URDF '{robot_urdf_name}' with Pyroki...")
-    ctx = get_pyroki_context(robot_urdf_name, target_link_name=target_link_name)
+    ctx = get_pyroki_context(
+        robot_urdf_name,
+        target_link_name=target_link_name,
+        root_link_name=root_link_name,
+    )
     _ROBOT = ctx.robot
     _ROBOT_COLL = ctx.robot_coll
     _TARGET_LINK = target_link_name
+    _FK_POSITION_TOLERANCE = float(fk_position_tolerance)
+    _FK_ROTATION_TOLERANCE = float(fk_rotation_tolerance)
 
+    logger.info(
+        "PyRoki robot ready: root_link=%s target_link=%s actuated_joints=%s",
+        root_link_name or "<urdf-root>",
+        target_link_name,
+        tuple(_ROBOT.joints.actuated_names),
+    )
+    logger.info(
+        "PyRoki FK validation tolerances: position=%.4fm rotation=%.4frad",
+        _FK_POSITION_TOLERANCE,
+        _FK_ROTATION_TOLERANCE,
+    )
     logger.info("PyRoki loaded and ready!")
 
 
@@ -283,6 +306,41 @@ def init_pyroki_server(
 # ROUTES
 # =====================================================
 
+
+
+def _quat_wxyz_to_rotation(quat_wxyz: np.ndarray) -> Rotation:
+    quat = np.asarray(quat_wxyz, dtype=np.float64).reshape(4)
+    norm = np.linalg.norm(quat)
+    if norm == 0.0 or not np.isfinite(norm):
+        raise ValueError(f"Invalid quaternion for FK residual check: {quat.tolist()}")
+    quat = quat / norm
+    return Rotation.from_quat([quat[1], quat[2], quat[3], quat[0]])
+
+
+def _ik_fk_residual(joints: list[float], target_pose_wxyz_xyz: np.ndarray) -> tuple[float, float]:
+    target_link_index = _ROBOT.links.names.index(_TARGET_LINK)
+    fk_poses = np.asarray(_ROBOT.forward_kinematics(np.asarray(joints, dtype=np.float64)))
+    actual_pose = np.asarray(fk_poses[target_link_index], dtype=np.float64).reshape(7)
+
+    position_error = float(np.linalg.norm(actual_pose[-3:] - target_pose_wxyz_xyz[-3:]))
+    target_rot = _quat_wxyz_to_rotation(target_pose_wxyz_xyz[:4])
+    actual_rot = _quat_wxyz_to_rotation(actual_pose[:4])
+    rotation_error = float((target_rot.inv() * actual_rot).magnitude())
+    return position_error, rotation_error
+
+
+def _validate_ik_solution(joints: list[float], target_pose_wxyz_xyz: np.ndarray) -> tuple[float, float]:
+    position_error, rotation_error = _ik_fk_residual(joints, target_pose_wxyz_xyz)
+    if (
+        position_error > _FK_POSITION_TOLERANCE
+        or rotation_error > _FK_ROTATION_TOLERANCE
+    ):
+        raise ValueError(
+            "PyRoKi FK residual too high: "
+            f"position={position_error:.4f}m (tol {_FK_POSITION_TOLERANCE:.4f}m), "
+            f"rotation={rotation_error:.4f}rad (tol {_FK_ROTATION_TOLERANCE:.4f}rad)."
+        )
+    return position_error, rotation_error
 
 def _do_solve_ik(target_pose_wxyz_xyz: np.ndarray, prev_cfg: np.ndarray | None) -> list[float]:
     """Blocking IK solve (CPU-bound)."""
@@ -300,6 +358,7 @@ def _do_solve_ik(target_pose_wxyz_xyz: np.ndarray, prev_cfg: np.ndarray | None) 
             target_position=target_pose_wxyz_xyz[-3:],
             target_wxyz=target_pose_wxyz_xyz[:-3],
             prev_cfg=prev_cfg,
+            initial_cfg=prev_cfg,
         )
     return list(map(float, q))
 
@@ -314,6 +373,13 @@ async def solve_ik(req: IkRequest):
 
     try:
         joints = await _run_in_thread(_do_solve_ik, target_pose_wxyz_xyz, prev_cfg)
+        position_error, rotation_error = _validate_ik_solution(joints, target_pose_wxyz_xyz)
+        logger.info(
+            "IK FK residual: position=%.4fm rotation=%.4frad prev_cfg=%s",
+            position_error,
+            rotation_error,
+            "yes" if prev_cfg is not None else "no",
+        )
     except Exception as e:
         logger.exception("IK failed")
         raise HTTPException(500, f"IK solve failed: {e}")
@@ -371,10 +437,19 @@ async def plan_motion(req: PlanRequest):
 def main(
     robot: str = "panda_description",
     target_link: str = "panda_hand",
+    root_link: str | None = None,
+    fk_position_tolerance: float = 0.03,
+    fk_rotation_tolerance: float = 0.75,
     port: int = 8116,
     host: str = "127.0.0.1",
 ):
-    init_pyroki_server(robot_urdf_name=robot, target_link_name=target_link)
+    init_pyroki_server(
+        robot_urdf_name=robot,
+        target_link_name=target_link,
+        root_link_name=root_link,
+        fk_position_tolerance=fk_position_tolerance,
+        fk_rotation_tolerance=fk_rotation_tolerance,
+    )
     uvicorn.run(app, host=host, port=port)
 
 

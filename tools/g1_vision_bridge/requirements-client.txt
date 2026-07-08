@@ -1,0 +1,6 @@
+msgpack
+msgpack-numpy
+numpy
+opencv-python
+pyyaml
+pyzmq

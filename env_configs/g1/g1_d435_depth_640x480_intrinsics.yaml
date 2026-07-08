@@ -1,0 +1,15 @@
+# D435i depth intrinsics for 640x480 Z16.
+# These values are for the depth image used by the G1 ZMQ bridge.
+camera_model: d435i
+stream: depth
+resolution:
+  width: 640
+  height: 480
+format: z16
+distortion_model: brown_conrady
+distortion_coeffs: [0.0, 0.0, 0.0, 0.0, 0.0]
+fx: 388.523101806641
+fy: 388.523101806641
+cx: 319.235015869141
+cy: 236.498229980469
+

@@ -3,6 +3,16 @@ import time
 import requests
 
 
+def _format_request_error(exc: requests.RequestException) -> str:
+    response = getattr(exc, "response", None)
+    if response is None:
+        return str(exc)
+    body = getattr(response, "text", "")
+    if body:
+        return f"{exc}; response body: {body}"
+    return str(exc)
+
+
 def post_with_retries(
     url: str,
     payload: dict,
@@ -40,7 +50,7 @@ def post_with_retries(
 
     raise RuntimeError(
         f"Request to {url} failed after {attempts} retries / "
-        f"{timeout_seconds:.2f}s. Last error: {last_err}"
+        f"{timeout_seconds:.2f}s. Last error: {_format_request_error(last_err) if last_err else None}"
     )
 
 
@@ -94,5 +104,5 @@ def post_with_queue_tolerance(
 
     raise RuntimeError(
         f"Request to {url} failed after {attempts} retries / "
-        f"{timeout_seconds:.2f}s. Last error: {last_err}"
+        f"{timeout_seconds:.2f}s. Last error: {_format_request_error(last_err) if last_err else None}"
     )

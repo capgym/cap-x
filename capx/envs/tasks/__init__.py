@@ -15,6 +15,7 @@ from .franka.franka_pick_place import FrankaPickPlaceCodeEnv
 from .franka.franka_spill_wipe import FrankaSpillWipeCodeEnv
 from .franka.two_arm_handover import TwoArmHandoverCodeEnv
 from .franka.two_arm_lift import TwoArmLiftCodeEnv
+from .unitree_g1.grasp_bottle import UnitreeG1GraspBottleCodeEnv
 
 register_exec_env("franka_real_code_env", FrankaPickPlaceCodeEnv)
 register_config(
@@ -164,6 +165,16 @@ register_config(
     CodeExecEnvConfig(
         low_level="franka_robosuite_cubes_restack_low_level",
         apis=["FrankaControlPrivilegedApi"],
+    ),
+)
+
+register_exec_env("unitree_g1_grasp_bottle_code_env", UnitreeG1GraspBottleCodeEnv)
+register_config(
+    "unitree_g1_grasp_bottle_code_env",
+    CodeExecEnvConfig(
+        low_level="g1_real_low_level",
+        apis=["G1RealControlApi", "G1CameraApi"],
+        privileged=False,
     ),
 )
 

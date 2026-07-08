@@ -1,0 +1,22 @@
+# Camera pose used by CaP-X visual APIs.
+#
+# T_world_camera maps RealSense depth optical-frame points into torso_link.
+# The depth optical frame uses x=right, y=down, z=forward.
+#
+# Source:
+#   env_configs/g1/g1_29dof_with_hand.urdf
+#   d435_joint origin xyz="0.0576235 0.01753 0.41987"
+#   d435_joint origin rpy="0 0.8307767239493009 0"
+#
+# Assumption:
+#   d435_link follows the ROS camera_link convention x=forward, y=left, z=up.
+#   Therefore T_world_camera = T_torso_d435_link * T_d435_link_depth_optical.
+parent_frame: torso_link
+child_frame: d435_depth_optical_frame
+source_urdf: env_configs/g1/g1_29dof_with_hand.urdf
+T_world_camera:
+  - [0.0, -0.738455340626, 0.674302387584, 0.0576235]
+  - [-1.0, 0.0, 0.0, 0.01753]
+  - [0.0, -0.674302387584, -0.738455340626, 0.41987]
+  - [0.0, 0.0, 0.0, 1.0]
+

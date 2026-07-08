@@ -14,6 +14,8 @@ from .franka.handover_reduced import FrankaHandoverApiReduced
 from .franka.handover_reduced_exampleless import FrankaHandoverApiReducedExampleless
 from .franka.two_arm_lift import FrankaTwoArmLiftApi
 from .franka.two_arm_lift_privileged import FrankaTwoArmLiftPrivilegedApi
+from .g1.control import G1RealControlApi
+from .g1.vision import G1CameraApi
 try:
     from .franka.libero import FrankaLiberoApi
     from .franka.libero_privileged import FrankaLiberoPrivilegedApi
@@ -115,6 +117,8 @@ register_api(
 
 register_api("FrankaRealReducedSkillLibraryControlApi", lambda env: FrankaControlApiReducedSkillLibrary(env, tcp_offset=[0.0, 0.0, -0.157], real = True))
 register_api("FrankaRealControlApi", lambda env: FrankaControlApi(env, tcp_offset=[0.0, 0.0, -0.157], real = True))
+register_api("G1RealControlApi", lambda env: G1RealControlApi(env, use_sam3=True))
+register_api("G1CameraApi", lambda env: G1CameraApi(env))
 
 try:
     from .r1pro.control import R1ProControlApi
