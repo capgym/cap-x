@@ -48,9 +48,9 @@ uv run --no-sync --active python tools/g1_vision_bridge/client_zmq_to_capx.py \
 
 
 export CAPX_G1_DRY_RUN=false
-  export OPENAI_API_KEY="sk-NkiRwZEsLx5N9iW66jmT5A"
+export OPENAI_API_KEY="sk-NkiRwZEsLx5N9iW66jmT5A"
 
-  uv run --no-sync --active capx/envs/launch.py \
+uv run --no-sync --active capx/envs/launch.py \
     --config-path env_configs/g1/g1_grasp_bottle.yaml \
     --num-workers 1 \
     --total-trials 1 \
