@@ -21,6 +21,8 @@ The nut's object center pose obtained via 'white hollow center of the brown squa
 You may write python code comments for reasoning but ONLY write the executable Python code and do not write it in code fences.
 The functions (APIs) below are already imported to the environment.
 If you want to use numpy, or scipy for spatial transformations, you need to import it explicitly.
+Call the provided API functions directly. Do not redefine them or import external robot-control modules.
+Only numpy and scipy imports are allowed. Your response must be one self-contained executable program.
 """
 ORACLE_CODE = """
 import numpy as np

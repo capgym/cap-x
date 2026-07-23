@@ -35,6 +35,15 @@ _FORBIDDEN_IMPORT_ROOTS = {
     "sys",
 }
 
+_DOCUMENTED_API_NAMES = {
+    "close_gripper",
+    "get_object_pose",
+    "goto_home_joint_position",
+    "goto_pose",
+    "open_gripper",
+    "sample_grasp_pose",
+}
+
 
 @dataclass(frozen=True)
 class ProgramGuardResult:
@@ -71,6 +80,16 @@ class _GuardVisitor(ast.NodeVisitor):
         root = (node.module or "").split(".", maxsplit=1)[0]
         if root in _FORBIDDEN_IMPORT_ROOTS:
             self._reject(f"forbidden import: {root}")
+        self.generic_visit(node)
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        if node.name in _DOCUMENTED_API_NAMES:
+            self._reject(f"cannot redefine documented API: {node.name}")
+        self.generic_visit(node)
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        if node.name in _DOCUMENTED_API_NAMES:
+            self._reject(f"cannot redefine documented API: {node.name}")
         self.generic_visit(node)
 
 

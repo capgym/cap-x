@@ -35,3 +35,10 @@ def test_rejects_oracle_and_introspection_access() -> None:
 
 def test_syntax_errors_are_left_to_the_executor() -> None:
     assert validate_generated_program("def broken(").allowed
+
+
+def test_rejects_shadowing_documented_robot_api() -> None:
+    result = validate_generated_program("def goto_pose(*args):\n    pass")
+
+    assert not result.allowed
+    assert result.reason == "cannot redefine documented API: goto_pose"
