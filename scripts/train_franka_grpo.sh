@@ -35,6 +35,7 @@ GRADIENT_CHECKPOINTING=${GRADIENT_CHECKPOINTING:-false}
 ACTOR_PARAM_OFFLOAD=${ACTOR_PARAM_OFFLOAD:-false}
 ACTOR_OPTIMIZER_OFFLOAD=${ACTOR_OPTIMIZER_OFFLOAD:-false}
 REF_PARAM_OFFLOAD=${REF_PARAM_OFFLOAD:-false}
+ASYNC_REWARD=${ASYNC_REWARD:-true}
 
 MODEL_OVERRIDES=(
   actor_rollout_ref.model.enable_gradient_checkpointing=${GRADIENT_CHECKPOINTING}
@@ -151,7 +152,7 @@ python -m verl.trainer.main_ppo \
   trainer.test_freq=${TEST_FREQ} \
   trainer.total_epochs=${TOTAL_EPOCHS} \
   trainer.val_before_train=False \
-  reward_model.launch_reward_fn_async=True \
+  reward_model.launch_reward_fn_async=${ASYNC_REWARD} \
   reward_model.reward_manager=prime
 
   # +ray_kwargs.ray_init.runtime_env.env_vars.MUJOCO_GL=egl \

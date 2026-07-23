@@ -28,3 +28,9 @@ def test_nut_assembly_vllm_capacity_matches_small_rollout_group() -> None:
     group_size = int(re.search(r"GROUP_SIZE:-([0-9]+)", source).group(1))
 
     assert group_size <= max_num_seqs <= 32
+
+
+def test_nut_assembly_reuses_one_synchronous_reward_environment() -> None:
+    source = Path("scripts/train_nut_assembly_grpo.sh").read_text()
+
+    assert "ASYNC_REWARD=${ASYNC_REWARD:-false}" in source
