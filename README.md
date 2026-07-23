@@ -195,6 +195,7 @@ uv run --no-sync --active capx/envs/launch.py \
 | [Development](docs/development.md) | Testing, linting, LIBERO/GraspNet setup, checkpoints, known issues |
 | [Real-World Franka Panda Bringup](docs/real-franka.md) | Bringup with robots_realtime, real-robot QuickStart |
 | [RL Training](docs/rl-training.md) | CaP-RL with GRPO/VeRL, sim-to-real transfer |
+| [NutAssembly Self-RFT](docs/nut-assembly-self-rft.md) | Non-oracle RoboSuite insertion training and evaluation receipts |
 | [Skill Library Compilation](scripts/skill_library_compilation/README.md) | Analyze eval outputs, compile reusable skill libraries |
 
 ---

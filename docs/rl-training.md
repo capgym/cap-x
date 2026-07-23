@@ -96,6 +96,21 @@ bash scripts/train_nut_assembly_grpo.sh
 
 Training logs and checkpoints are saved to `DATA_ROOT`. Monitor training progress on your W&B dashboard.
 
+For rejection fine-tuning, first evaluate an open-source policy with `use_oracle_code=false` and
+select only successful rollout directories. The self-RFT entry point rejects failed trials, oracle
+runs, programs that fail the policy guard, prompt parquets containing reference programs, and an
+exact match to the repository oracle. It writes source-program and merged-checkpoint hashes to
+`training_receipt.json`.
+
+```bash
+python scripts/train_nut_assembly_self_rft.py \
+  --prompt-parquet /path/to/prompt-only/train.parquet \
+  --trial-dir /path/to/trial_15_sandboxrc_0_reward_1.000_taskcompleted_1 \
+  --output-dir /path/to/nut-assembly-self-rft
+```
+
+See [NutAssembly self-RFT experiment](nut-assembly-self-rft.md) for the validated run and receipts.
+
 ### Configuration
 
 Override these key environment variables for training on different tasks and models:
