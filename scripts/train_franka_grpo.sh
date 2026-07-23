@@ -40,6 +40,7 @@ ACTOR_PARAM_OFFLOAD=${ACTOR_PARAM_OFFLOAD:-false}
 ACTOR_OPTIMIZER_OFFLOAD=${ACTOR_OPTIMIZER_OFFLOAD:-false}
 REF_PARAM_OFFLOAD=${REF_PARAM_OFFLOAD:-false}
 ASYNC_REWARD=${ASYNC_REWARD:-true}
+REWARD_MANAGER=${REWARD_MANAGER:-prime}
 MODEL_TAG=${MODEL_PATH//\//_}
 EXPERIMENT_NAME=${EXPERIMENT_NAME:-${ALGO}_${MODEL_TAG}_${DATA_SOURCE}_${DATE}_temperature_${TRAIN_TEMPERATURE}_group_${GROUP_SIZE}}
 
@@ -159,6 +160,6 @@ python -m verl.trainer.main_ppo \
   trainer.total_epochs=${TOTAL_EPOCHS} \
   trainer.val_before_train=False \
   reward_model.launch_reward_fn_async=${ASYNC_REWARD} \
-  reward_model.reward_manager=prime
+  reward_model.reward_manager=${REWARD_MANAGER}
 
   # +ray_kwargs.ray_init.runtime_env.env_vars.MUJOCO_GL=egl \

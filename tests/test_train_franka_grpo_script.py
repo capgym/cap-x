@@ -30,10 +30,12 @@ def test_nut_assembly_vllm_capacity_matches_small_rollout_group() -> None:
     assert group_size <= max_num_seqs <= 32
 
 
-def test_nut_assembly_reuses_one_synchronous_reward_environment() -> None:
+def test_nut_assembly_reuses_one_sequential_reward_environment() -> None:
     source = Path("scripts/train_nut_assembly_grpo.sh").read_text()
 
     assert "ASYNC_REWARD=${ASYNC_REWARD:-false}" in source
+    assert "REWARD_MANAGER=${REWARD_MANAGER:-naive}" in source
+    assert "ROLLOUT_WORKERS=${ROLLOUT_WORKERS:-1}" in source
 
 
 def test_nut_assembly_default_model_fits_single_worker_memory() -> None:
