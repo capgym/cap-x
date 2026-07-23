@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from scripts.validate_nut_assembly_results import validate
+from capx.utils.nut_assembly_validation import validate_nut_assembly_results
 
 
 def _result_dir(tmp_path, *, success_rate: float = 0.81, oracle: bool = False):
@@ -37,7 +37,7 @@ def _args(result_dir, **overrides):
 
 
 def test_accepts_strictly_greater_than_threshold(tmp_path) -> None:
-    receipt = validate(_args(_result_dir(tmp_path)))
+    receipt = validate_nut_assembly_results(_args(_result_dir(tmp_path)))
 
     assert receipt["generated_programs_checked"] == 2
     assert receipt["task_completion_rate"] == 0.81
@@ -45,9 +45,9 @@ def test_accepts_strictly_greater_than_threshold(tmp_path) -> None:
 
 def test_rejects_equal_threshold(tmp_path) -> None:
     with pytest.raises(ValueError, match="must be greater"):
-        validate(_args(_result_dir(tmp_path, success_rate=0.8)))
+        validate_nut_assembly_results(_args(_result_dir(tmp_path, success_rate=0.8)))
 
 
 def test_rejects_oracle_run(tmp_path) -> None:
     with pytest.raises(ValueError, match="oracle-code"):
-        validate(_args(_result_dir(tmp_path, oracle=True)))
+        validate_nut_assembly_results(_args(_result_dir(tmp_path, oracle=True)))
