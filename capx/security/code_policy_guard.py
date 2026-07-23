@@ -3,7 +3,6 @@ from __future__ import annotations
 import ast
 from dataclasses import dataclass
 
-
 _FORBIDDEN_NAMES = {
     "APIS",
     "ORACLE_CODE",
@@ -25,15 +24,7 @@ _FORBIDDEN_NAMES = {
     "vars",
 }
 
-_FORBIDDEN_IMPORT_ROOTS = {
-    "importlib",
-    "inspect",
-    "os",
-    "pathlib",
-    "pickle",
-    "subprocess",
-    "sys",
-}
+_ALLOWED_IMPORT_ROOTS = {"numpy", "scipy"}
 
 _DOCUMENTED_API_NAMES = {
     "close_gripper",
@@ -41,6 +32,8 @@ _DOCUMENTED_API_NAMES = {
     "goto_home_joint_position",
     "goto_pose",
     "open_gripper",
+    "compose_pose",
+    "relative_pose",
     "sample_grasp_pose",
 }
 
@@ -72,14 +65,18 @@ class _GuardVisitor(ast.NodeVisitor):
     def visit_Import(self, node: ast.Import) -> None:
         for alias in node.names:
             root = alias.name.split(".", maxsplit=1)[0]
-            if root in _FORBIDDEN_IMPORT_ROOTS:
+            if root not in _ALLOWED_IMPORT_ROOTS:
                 self._reject(f"forbidden import: {root}")
         self.generic_visit(node)
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
         root = (node.module or "").split(".", maxsplit=1)[0]
-        if root in _FORBIDDEN_IMPORT_ROOTS:
+        if root not in _ALLOWED_IMPORT_ROOTS:
             self._reject(f"forbidden import: {root}")
+        self.generic_visit(node)
+
+    def visit_Try(self, node: ast.Try) -> None:
+        self._reject("try/except is forbidden in generated robot programs")
         self.generic_visit(node)
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:

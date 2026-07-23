@@ -36,3 +36,11 @@ def test_reward_rejects_environment_bypass_before_execution(monkeypatch) -> None
     assert result["score"] == 0.0
     assert result["won"] is False
     assert "forbidden" in result["error"]
+
+
+def test_structure_bonus_requires_documented_api_calls() -> None:
+    assert capx_franka_reward._api_structure_bonus("x = 1") == 0.0
+    assert capx_franka_reward._api_structure_bonus("open_gripper()") == 0.005
+    assert capx_franka_reward._api_structure_bonus(
+        "open_gripper()\nposition, quaternion = sample_grasp_pose('square nut handle')"
+    ) == 0.01

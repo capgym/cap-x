@@ -1,4 +1,5 @@
 from capx.envs.tasks.base import CodeExecutionEnvBase
+from capx.security import validate_generated_program
 
 # PROMPT = """
 # You are controlling a Franka Emika robot with API described below.
@@ -17,12 +18,13 @@ Goal: grasp and insert the `brown square nut` onto the `brown square block`.
 Note that you would grasp the nut by its handle. You can try language query `extruded handle of the brown square nut` to get a good grasp at the handle.
 The brown square nut and the extruded handle of the brown square nut are part of the same rigid body.
 The grasp pose query for 'extruded handle of the brown square nut' returns an end-effector pose expressed in world frame, located on the handle region.
-The nut's object center pose obtained via 'white hollow center of the brown square nut' and the handle grasp pose obtained via 'extruded handle of the brown square nut' have a fixed rigid transform, which must be applied correctly when inserting the nut onto the peg.
+Before moving the robot, save the handle pose relative to the nut center with relative_pose. After grasping the handle, compose the square block pose with that saved relative pose to obtain the insertion handle pose.
+Approach the handle from above, close the gripper, return home for a stable IK seed, approach the insertion handle pose from above, lower 2 cm in world Z, and release.
 You may write python code comments for reasoning but ONLY write the executable Python code and do not write it in code fences.
 The functions (APIs) below are already imported to the environment.
 If you want to use numpy, or scipy for spatial transformations, you need to import it explicitly.
 Call the provided API functions directly. Do not redefine them or import external robot-control modules.
-Only numpy and scipy imports are allowed. Your response must be one self-contained executable program.
+Only numpy and scipy imports are allowed. Do not use try/except. Your response must be one compact, self-contained executable program.
 """
 ORACLE_CODE = """
 import numpy as np
@@ -103,6 +105,23 @@ class FrankaNutAssemblyCodeEnv(CodeExecutionEnvBase):
 
     prompt = PROMPT
     oracle_code = ORACLE_CODE
+
+    def step(self, action: str):
+        guard = validate_generated_program(action)
+        if guard.allowed:
+            return super().step(action)
+
+        observation = self._get_observation()
+        reward = self.compute_reward()
+        task_completed = self.low_level_env.task_completed()
+        info = {
+            "sandbox_rc": 1,
+            "stdout": "",
+            "stderr": guard.reason,
+            "task_prompt": self._task_prompt,
+            "task_completed": task_completed,
+        }
+        return observation, reward, False, False, info
 
 
 __all__ = [

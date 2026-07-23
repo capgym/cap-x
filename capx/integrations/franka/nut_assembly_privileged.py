@@ -41,13 +41,71 @@ class FrankaControlNutAssemblyPrivilegedApi(ApiBase):
 
     def functions(self) -> dict[str, Any]:
         return {
+            "compose_pose": self.compose_pose,
             "get_object_pose": self.get_object_pose,
+            "relative_pose": self.relative_pose,
             "sample_grasp_pose": self.sample_grasp_pose,
             "goto_pose": self.goto_pose,
             "goto_home_joint_position": self.goto_home_joint_position,
             "open_gripper": self.open_gripper,
             "close_gripper": self.close_gripper,
         }
+
+    @staticmethod
+    def _pose_matrix(position: np.ndarray, quaternion_wxyz: np.ndarray) -> np.ndarray:
+        position = np.asarray(position, dtype=np.float64).reshape(3)
+        quaternion_wxyz = np.asarray(quaternion_wxyz, dtype=np.float64).reshape(4)
+        matrix = np.eye(4, dtype=np.float64)
+        matrix[:3, :3] = SciRotation.from_quat(
+            [
+                quaternion_wxyz[1],
+                quaternion_wxyz[2],
+                quaternion_wxyz[3],
+                quaternion_wxyz[0],
+            ]
+        ).as_matrix()
+        matrix[:3, 3] = position
+        return matrix
+
+    @staticmethod
+    def _matrix_pose(matrix: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        matrix = np.asarray(matrix, dtype=np.float64).reshape(4, 4)
+        quaternion_xyzw = SciRotation.from_matrix(matrix[:3, :3]).as_quat()
+        quaternion_wxyz = quaternion_xyzw[[3, 0, 1, 2]]
+        return matrix[:3, 3].copy(), quaternion_wxyz
+
+    def compose_pose(
+        self,
+        parent_position: np.ndarray,
+        parent_quaternion_wxyz: np.ndarray,
+        child_position: np.ndarray,
+        child_quaternion_wxyz: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Compose parent and child poses, returning the child pose in the world frame.
+
+        All positions are XYZ and all quaternions are WXYZ. If ``child`` is a handle pose
+        expressed in an object frame, composing the world object pose with ``child`` returns
+        the desired world handle pose.
+        """
+        parent = self._pose_matrix(parent_position, parent_quaternion_wxyz)
+        child = self._pose_matrix(child_position, child_quaternion_wxyz)
+        return self._matrix_pose(parent @ child)
+
+    def relative_pose(
+        self,
+        parent_position: np.ndarray,
+        parent_quaternion_wxyz: np.ndarray,
+        child_position: np.ndarray,
+        child_quaternion_wxyz: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Express a world-frame child pose in a world-frame parent pose.
+
+        All positions are XYZ and all quaternions are WXYZ. The returned pose is suitable
+        for a later ``compose_pose`` call with a new world-frame parent pose.
+        """
+        parent = self._pose_matrix(parent_position, parent_quaternion_wxyz)
+        child = self._pose_matrix(child_position, child_quaternion_wxyz)
+        return self._matrix_pose(np.linalg.inv(parent) @ child)
 
     def get_nut_handle_to_center_offset(self, object_name: str) -> np.ndarray:
         """Get the offset of the nut handle from the nut center.

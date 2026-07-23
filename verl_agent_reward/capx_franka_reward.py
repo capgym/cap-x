@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import os
+
 # Ensure headless MuJoCo rendering in Ray workers
 os.environ.setdefault("MUJOCO_GL", "osmesa")
 
+import ast
 import hashlib
 import signal
 import time
@@ -16,6 +18,17 @@ from capx.security import validate_generated_program
 
 initialized_envs = {}
 
+_ROBOT_API_NAMES = {
+    "close_gripper",
+    "compose_pose",
+    "get_object_pose",
+    "goto_home_joint_position",
+    "goto_pose",
+    "open_gripper",
+    "relative_pose",
+    "sample_grasp_pose",
+}
+
 
 def _extract_code(content: str) -> str:
     # blocks = []
@@ -27,6 +40,22 @@ def _extract_code(content: str) -> str:
         return content
     content = content[start_idx + len(fence_start) : end_idx]
     return content.strip()
+
+
+def _api_structure_bonus(source: str) -> float:
+    """Give a small curriculum signal for executable use of documented APIs."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return 0.0
+    calls = {
+        node.func.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id in _ROBOT_API_NAMES
+    }
+    return min(len(calls) * 0.005, 0.025)
 
 
 @contextmanager
@@ -109,10 +138,9 @@ def compute_score(
         # print(f"Environment step time: {time.time() - start_time:.4f} seconds")
         endtime = time.time()
         print("Time taken for eval: ", endtime - start_time)
-        if info["sandbox_rc"] == 0:
-            score = float(max(reward, 0.1))
-        else:
-            score = float(max(reward, 0.0))
+        environment_reward = float(max(reward, 0.0))
+        structure_bonus = _api_structure_bonus(solution_str) if info["sandbox_rc"] == 0 else 0.0
+        score = max(environment_reward, structure_bonus)
         print("Score: ", score)
         # Always return a consistent schema so reward_extra_info lists align with batch size.
         # If the episode did not terminate, we still return the immediate reward—VeRL will
@@ -124,6 +152,8 @@ def compute_score(
             "terminated": bool(terminated),
             "truncated": bool(truncated),
             "error": "",
+            "environment_reward": environment_reward,
+            "structure_bonus": structure_bonus,
             "program_sha256": program_sha256,
         }
     except TimeoutError as e:
