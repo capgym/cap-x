@@ -34,3 +34,9 @@ def test_nut_assembly_reuses_one_synchronous_reward_environment() -> None:
     source = Path("scripts/train_nut_assembly_grpo.sh").read_text()
 
     assert "ASYNC_REWARD=${ASYNC_REWARD:-false}" in source
+
+
+def test_nut_assembly_default_model_fits_single_worker_memory() -> None:
+    source = Path("scripts/train_nut_assembly_grpo.sh").read_text()
+
+    assert "Qwen/Qwen2.5-Coder-0.5B-Instruct" in source

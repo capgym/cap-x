@@ -86,6 +86,8 @@ bash scripts/train_franka_grpo.sh
 The dedicated single-GPU preset trains on RoboSuite `NutAssemblySquare`. Its parquet files contain
 only prompts and seeds; task oracle programs are excluded and the reward path rejects generated
 code that reaches through `env`, `APIS`, oracle symbols, or filesystem/process introspection.
+The preset uses Qwen2.5-Coder-0.5B with LoRA and CPU offload so actor, rollout, reward environment,
+and checkpointing fit on a 32 GB GPU / 32 GB host-memory worker.
 
 ```bash
 source .venv-rl/bin/activate

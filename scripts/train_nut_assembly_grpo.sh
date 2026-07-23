@@ -2,7 +2,7 @@
 set -euo pipefail
 
 export DATA_SOURCE=${DATA_SOURCE:-franka_nut_assembly_code_env}
-export MODEL_PATH=${MODEL_PATH:-Qwen/Qwen2.5-Coder-1.5B-Instruct}
+export MODEL_PATH=${MODEL_PATH:-Qwen/Qwen2.5-Coder-0.5B-Instruct}
 export DATA_ROOT=${DATA_ROOT:-$HOME/data/capx/nut_assembly_prompt_only}
 export GROUP_SIZE=${GROUP_SIZE:-8}
 export TRAIN_DATASET_SIZE=${TRAIN_DATASET_SIZE:-64}
