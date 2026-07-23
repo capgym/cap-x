@@ -558,3 +558,24 @@ def _print_and_save_summary(
             f.write(f"Average regenerations: {average_regenerations:.3f}\n")
             f.write(f"Average finishes: {average_finishes:.3f}\n")
             f.write(f"Elapsed time: {elapsed_time:.2f} seconds\n")
+        summary_json = {
+            "model": args.model,
+            "config_path": args.config_path,
+            "git_commit": git_commit,
+            "git_dirty": is_dirty,
+            "trials": [summary.trial for summary in summaries],
+            "total_trials": executed_trials,
+            "code_execution_successes": success_count,
+            "code_execution_success_rate": success_rate,
+            "task_completed": task_completed_count,
+            "task_completion_rate": task_completed_count / executed_trials,
+            "average_reward": average_reward,
+            "average_code_blocks": average_code_blocks,
+            "average_regenerations": average_regenerations,
+            "average_finishes": average_finishes,
+            "elapsed_seconds": elapsed_time,
+            "use_oracle_code": bool(config["use_oracle_code"]),
+        }
+        (Path(config["output_dir"]) / "summary.json").write_text(
+            json.dumps(summary_json, indent=2)
+        )
