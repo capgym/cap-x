@@ -40,6 +40,8 @@ ACTOR_PARAM_OFFLOAD=${ACTOR_PARAM_OFFLOAD:-false}
 ACTOR_OPTIMIZER_OFFLOAD=${ACTOR_OPTIMIZER_OFFLOAD:-false}
 REF_PARAM_OFFLOAD=${REF_PARAM_OFFLOAD:-false}
 ASYNC_REWARD=${ASYNC_REWARD:-true}
+MODEL_TAG=${MODEL_PATH//\//_}
+EXPERIMENT_NAME=${EXPERIMENT_NAME:-${ALGO}_${MODEL_TAG}_${DATA_SOURCE}_${DATE}_temperature_${TRAIN_TEMPERATURE}_group_${GROUP_SIZE}}
 
 MODEL_OVERRIDES=(
   actor_rollout_ref.model.enable_gradient_checkpointing=${GRADIENT_CHECKPOINTING}
@@ -148,7 +150,7 @@ python -m verl.trainer.main_ppo \
   trainer.critic_warmup=0 \
   trainer.logger=[${TRAINER_LOGGER}] \
   trainer.project_name=capx \
-  trainer.experiment_name=${ALGO}_${MODEL_PATH}_${DATA_SOURCE}_${DATE}_refactor_temperature_${TRAIN_TEMPERATURE}_group_size_${GROUP_SIZE} \
+  trainer.experiment_name=${EXPERIMENT_NAME} \
   trainer.n_gpus_per_node=${N_GPUS} \
   trainer.nnodes=1 \
   trainer.save_freq=${SAVE_FREQ} \

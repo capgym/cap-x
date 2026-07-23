@@ -40,3 +40,10 @@ def test_nut_assembly_default_model_fits_single_worker_memory() -> None:
     source = Path("scripts/train_nut_assembly_grpo.sh").read_text()
 
     assert "Qwen/Qwen2.5-Coder-0.5B-Instruct" in source
+
+
+def test_experiment_name_sanitizes_model_path() -> None:
+    source = Path("scripts/train_franka_grpo.sh").read_text()
+
+    assert "MODEL_TAG=${MODEL_PATH//\\//_}" in source
+    assert "trainer.experiment_name=${EXPERIMENT_NAME}" in source
