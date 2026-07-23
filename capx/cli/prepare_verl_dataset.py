@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pyarrow as pa
-import pyarrow.dataset as ds
 import pyarrow.parquet as pq
 import tyro
 
@@ -17,33 +16,13 @@ from capx.envs.tasks import get_config, get_exec_env
 from capx.utils.parallel_eval import run_parallel_batches
 
 
-def _load_oracle_pool(path: Path | None) -> list[str]:
-    if not path:
-        return []
-    if not path.exists():
-        return []
-    try:
-        table = ds.dataset(str(path)).to_table()
-        programs = table.column("program").to_pylist()
-        out = [str(p).strip() for p in programs if isinstance(p, (str, bytes)) and str(p).strip()]
-        # Deduplicate
-        seen: set[str] = set()
-        uniq: list[str] = []
-        for p in out:
-            if p not in seen:
-                seen.add(p)
-                uniq.append(p)
-        return uniq
-    except Exception:
-        return []
-
-
 def _generate_rows(
     indices: list[int],
     *,
     split: str,
     data_source: str,
     seed_base: int,
+    include_oracle_ground_truth: bool,
 ) -> list[dict]:
     env = get_exec_env(data_source)(get_config(data_source))
     rows: list[dict] = []
@@ -51,7 +30,7 @@ def _generate_rows(
         for idx in indices:
             env_seed = seed_base + idx
             obs = env._get_observation()
-            if env.oracle_code is not None:
+            if include_oracle_ground_truth and env.oracle_code is not None:
                 ground_truth = {"program": env.oracle_code}
             else:
                 ground_truth = {"program": None}
@@ -93,6 +72,7 @@ def _sample_rows(
     data_source: str,
     seed_base: int,
     num_workers: int,
+    include_oracle_ground_truth: bool,
 ) -> list[dict]:
     if size <= 0:
         return []
@@ -102,6 +82,7 @@ def _sample_rows(
         split=split,
         data_source=data_source,
         seed_base=seed_base,
+        include_oracle_ground_truth=include_oracle_ground_truth,
     )
     rows = run_parallel_batches(
         trial_ids,
@@ -122,19 +103,19 @@ class Args:
     data_source: str = "franka_pick_place_code_env"
     seed: int = 0
     num_workers: int = 1
-    oracle_pool: Path | None = None
+    include_oracle_ground_truth: bool = False
+    """Store task oracle programs in parquet. Disabled by default for policy training."""
 
 
 def main(args: Args) -> None:
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    global _ORACLE_POOL
-    _ORACLE_POOL = _load_oracle_pool(args.oracle_pool)
     train_rows = _sample_rows(
         split="train",
         size=args.train_size,
         data_source=args.data_source,
         seed_base=args.seed,
         num_workers=args.num_workers,
+        include_oracle_ground_truth=args.include_oracle_ground_truth,
     )
     val_rows = _sample_rows(
         split="val",
@@ -142,6 +123,7 @@ def main(args: Args) -> None:
         data_source=args.data_source,
         seed_base=args.seed + 10000,
         num_workers=args.num_workers,
+        include_oracle_ground_truth=args.include_oracle_ground_truth,
     )
 
     pq.write_table(pa.Table.from_pylist(train_rows), args.output_dir / "train.parquet")
@@ -152,6 +134,7 @@ def main(args: Args) -> None:
         "val": len(val_rows),
         "data_source": args.data_source,
         "seed": args.seed,
+        "include_oracle_ground_truth": args.include_oracle_ground_truth,
     }
     (args.output_dir / "manifest.json").write_text(json.dumps(manifest, indent=2))
     print(f"Wrote dataset to {args.output_dir} ({len(train_rows)} train / {len(val_rows)} val)")

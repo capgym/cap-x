@@ -15,6 +15,17 @@ DATA_ROOT=${DATA_ROOT:-$HOME/data/capx/franka}
 TRAIN_TEMPERATURE=${TRAIN_TEMPERATURE:-1.0}
 N_GPUS=${N_GPUS:-$(nvidia-smi -L 2>/dev/null | wc -l)}
 PYROKI_PORT=${PYROKI_PORT:-8116}
+TRAIN_BATCH_SIZE=${TRAIN_BATCH_SIZE:-256}
+VAL_BATCH_SIZE=${VAL_BATCH_SIZE:-256}
+PPO_MINI_BATCH_SIZE=${PPO_MINI_BATCH_SIZE:-256}
+PPO_MICRO_BATCH_SIZE=${PPO_MICRO_BATCH_SIZE:-8}
+LOG_PROB_MICRO_BATCH_SIZE=${LOG_PROB_MICRO_BATCH_SIZE:-16}
+ROLLOUT_WORKERS=${ROLLOUT_WORKERS:-25}
+GPU_MEMORY_UTILIZATION=${GPU_MEMORY_UTILIZATION:-0.75}
+TOTAL_EPOCHS=${TOTAL_EPOCHS:-50}
+SAVE_FREQ=${SAVE_FREQ:-10}
+TEST_FREQ=${TEST_FREQ:--1}
+TRAINER_LOGGER=${TRAINER_LOGGER:-wandb}
 
 # ---------------------------------------------------------------------------
 # Auto-start PyRoKi IK server if not already running
@@ -34,6 +45,19 @@ if ! python -c "import socket; s=socket.create_connection(('127.0.0.1', ${PYROKI
   done
   trap "kill ${PYROKI_PID} 2>/dev/null || true" EXIT
 fi
+
+python - "${DATA_ROOT}/train.parquet" "${DATA_ROOT}/test.parquet" <<'PY'
+import sys
+
+import pyarrow.parquet as pq
+
+for path in sys.argv[1:]:
+    rows = pq.read_table(path, columns=["reward_model"]).to_pylist()
+    leaked = [row for row in rows if row["reward_model"]["ground_truth"]["program"]]
+    if leaked:
+        raise RuntimeError(f"oracle programs are forbidden in policy-training data: {path}")
+print("Verified prompt-only training data with no oracle programs")
+PY
 
 # ---------------------------------------------------------------------------
 # Prepare dataset (only if it doesn't already exist)
@@ -61,8 +85,8 @@ python -m verl.trainer.main_ppo \
   algorithm.adv_estimator=${ALGO} \
   data.train_files=${DATA_ROOT}/train.parquet \
   data.val_files=${DATA_ROOT}/test.parquet \
-  data.train_batch_size=256 \
-  data.val_batch_size=256 \
+  data.train_batch_size=${TRAIN_BATCH_SIZE} \
+  data.val_batch_size=${VAL_BATCH_SIZE} \
   data.max_prompt_length=1024 \
   data.max_response_length=1024 \
   data.filter_overlong_prompts=True \
@@ -73,32 +97,32 @@ python -m verl.trainer.main_ppo \
   actor_rollout_ref.actor.use_kl_loss=${USE_KL_LOSS} \
   actor_rollout_ref.actor.kl_loss_coef=0.02 \
   actor_rollout_ref.actor.kl_loss_type=low_var_kl \
-  actor_rollout_ref.actor.ppo_mini_batch_size=256 \
-  actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=8 \
+  actor_rollout_ref.actor.ppo_mini_batch_size=${PPO_MINI_BATCH_SIZE} \
+  actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=${PPO_MICRO_BATCH_SIZE} \
   actor_rollout_ref.rollout.name=vllm \
   actor_rollout_ref.rollout.temperature=${TRAIN_TEMPERATURE} \
   actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
   actor_rollout_ref.rollout.n=${GROUP_SIZE} \
-  actor_rollout_ref.rollout.agent.num_workers=25 \
-  actor_rollout_ref.rollout.gpu_memory_utilization=0.75 \
+  actor_rollout_ref.rollout.agent.num_workers=${ROLLOUT_WORKERS} \
+  actor_rollout_ref.rollout.gpu_memory_utilization=${GPU_MEMORY_UTILIZATION} \
   actor_rollout_ref.rollout.enable_chunked_prefill=True \
-  actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=16 \
+  actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=${LOG_PROB_MICRO_BATCH_SIZE} \
   actor_rollout_ref.rollout.val_kwargs.temperature=0.2 \
   actor_rollout_ref.rollout.val_kwargs.do_sample=True \
-  actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=16 \
+  actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=${LOG_PROB_MICRO_BATCH_SIZE} \
   algorithm.use_kl_in_reward=False \
   custom_reward_function.path=verl_agent_reward/capx_franka_reward.py \
   custom_reward_function.name=compute_score \
   trainer.critic_warmup=0 \
-  trainer.logger=[wandb] \
+  trainer.logger=[${TRAINER_LOGGER}] \
   trainer.project_name=capx \
   trainer.experiment_name=${ALGO}_${MODEL_PATH}_${DATA_SOURCE}_${DATE}_refactor_temperature_${TRAIN_TEMPERATURE}_group_size_${GROUP_SIZE} \
   trainer.n_gpus_per_node=${N_GPUS} \
   trainer.nnodes=1 \
-  trainer.save_freq=10 \
+  trainer.save_freq=${SAVE_FREQ} \
   trainer.default_local_dir=${DATA_ROOT}/checkpoints/\${trainer.project_name}/\${trainer.experiment_name} \
-  trainer.test_freq=-1 \
-  trainer.total_epochs=50 \
+  trainer.test_freq=${TEST_FREQ} \
+  trainer.total_epochs=${TOTAL_EPOCHS} \
   trainer.val_before_train=False \
   reward_model.launch_reward_fn_async=True \
   reward_model.reward_manager=prime

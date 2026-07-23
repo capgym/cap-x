@@ -4,6 +4,7 @@ import os
 # Ensure headless MuJoCo rendering in Ray workers
 os.environ.setdefault("MUJOCO_GL", "osmesa")
 
+import hashlib
 import signal
 import time
 from collections.abc import Iterator
@@ -11,6 +12,7 @@ from contextlib import contextmanager
 from typing import Any
 
 from capx.envs.tasks import get_config, get_exec_env
+from capx.security import validate_generated_program
 
 initialized_envs = {}
 
@@ -85,7 +87,18 @@ def compute_score(
     seed: int = int(extra.get("seed", 0))
 
     solution_str = _extract_code(solution_str)
+    program_sha256 = hashlib.sha256(solution_str.encode()).hexdigest()
     print("Solution code: ", solution_str)
+    guard = validate_generated_program(solution_str)
+    if not guard.allowed:
+        return {
+            "score": 0.0,
+            "won": False,
+            "terminated": False,
+            "truncated": False,
+            "error": guard.reason,
+            "program_sha256": program_sha256,
+        }
     try:
         env.reset(seed=seed)
         # Execute the whole program in one env step; the env internally
@@ -104,12 +117,14 @@ def compute_score(
         # Always return a consistent schema so reward_extra_info lists align with batch size.
         # If the episode did not terminate, we still return the immediate reward—VeRL will
         # place it on the last token.
+        task_completed = bool(info.get("task_completed", False))
         return {
             "score": score,
-            "won": bool(score > 0.0),
+            "won": task_completed,
             "terminated": bool(terminated),
             "truncated": bool(truncated),
             "error": "",
+            "program_sha256": program_sha256,
         }
     except TimeoutError as e:
         return {
@@ -118,6 +133,7 @@ def compute_score(
             "terminated": False,
             "truncated": True,
             "error": repr(e),
+            "program_sha256": program_sha256,
         }
     except Exception as e:  # noqa: BLE001
         # Fail-safe: return zero with a consistent schema; include error string for inspection.
@@ -127,4 +143,5 @@ def compute_score(
             "terminated": False,
             "truncated": False,
             "error": repr(e),
+            "program_sha256": program_sha256,
         }

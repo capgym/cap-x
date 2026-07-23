@@ -81,6 +81,17 @@ DATA_SOURCE=franka_robosuite_spill_wipe_code_env \
 bash scripts/train_franka_grpo.sh
 ```
 
+### Nut Assembly (Insertion)
+
+The dedicated single-GPU preset trains on RoboSuite `NutAssemblySquare`. Its parquet files contain
+only prompts and seeds; task oracle programs are excluded and the reward path rejects generated
+code that reaches through `env`, `APIS`, oracle symbols, or filesystem/process introspection.
+
+```bash
+source .venv-rl/bin/activate
+bash scripts/train_nut_assembly_grpo.sh
+```
+
 Training logs and checkpoints are saved to `DATA_ROOT`. Monitor training progress on your W&B dashboard.
 
 ### Configuration
@@ -154,5 +165,6 @@ python capx/envs/launch.py \
 | Cube Lift | `franka_lift_code_env` | `cube_lifting/` | Lift a red cube above a height threshold |
 | Cube Stack | `franka_robosuite_pick_place_code_env` | `cube_stack/` | Stack red cube on green cube |
 | Spill Wipe | `franka_robosuite_spill_wipe_code_env` | `spill_wipe/` | Wipe a spill with a sponge |
+| Nut Assembly | `franka_nut_assembly_code_env` | `nut_assembly/` | Insert a square nut onto a square peg |
 
 See `env_configs/` for more tasks and the full list of YAML configurations. 
