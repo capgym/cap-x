@@ -66,19 +66,6 @@ if ! python -c "import socket; s=socket.create_connection(('127.0.0.1', ${PYROKI
   trap "kill ${PYROKI_PID} 2>/dev/null || true" EXIT
 fi
 
-python - "${DATA_ROOT}/train.parquet" "${DATA_ROOT}/test.parquet" <<'PY'
-import sys
-
-import pyarrow.parquet as pq
-
-for path in sys.argv[1:]:
-    rows = pq.read_table(path, columns=["reward_model"]).to_pylist()
-    leaked = [row for row in rows if row["reward_model"]["ground_truth"]["program"]]
-    if leaked:
-        raise RuntimeError(f"oracle programs are forbidden in policy-training data: {path}")
-print("Verified prompt-only training data with no oracle programs")
-PY
-
 # ---------------------------------------------------------------------------
 # Prepare dataset (only if it doesn't already exist)
 # ---------------------------------------------------------------------------
@@ -93,6 +80,19 @@ if [[ ! -d "${DATA_ROOT}" ]]; then
     --val-size ${VAL_DATASET_SIZE} \
     --data-source ${DATA_SOURCE}
 fi
+
+python - "${DATA_ROOT}/train.parquet" "${DATA_ROOT}/test.parquet" <<'PY'
+import sys
+
+import pyarrow.parquet as pq
+
+for path in sys.argv[1:]:
+    rows = pq.read_table(path, columns=["reward_model"]).to_pylist()
+    leaked = [row for row in rows if row["reward_model"]["ground_truth"]["program"]]
+    if leaked:
+        raise RuntimeError(f"oracle programs are forbidden in policy-training data: {path}")
+print("Verified prompt-only training data with no oracle programs")
+PY
 
 USE_KL_LOSS=false
 if [[ "${ALGO}" == "grpo" ]]; then
