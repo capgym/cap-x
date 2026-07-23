@@ -26,6 +26,26 @@ TOTAL_EPOCHS=${TOTAL_EPOCHS:-50}
 SAVE_FREQ=${SAVE_FREQ:-10}
 TEST_FREQ=${TEST_FREQ:--1}
 TRAINER_LOGGER=${TRAINER_LOGGER:-wandb}
+LORA_RANK=${LORA_RANK:-0}
+LORA_ALPHA=${LORA_ALPHA:-${LORA_RANK}}
+GRADIENT_CHECKPOINTING=${GRADIENT_CHECKPOINTING:-false}
+ACTOR_PARAM_OFFLOAD=${ACTOR_PARAM_OFFLOAD:-false}
+ACTOR_OPTIMIZER_OFFLOAD=${ACTOR_OPTIMIZER_OFFLOAD:-false}
+REF_PARAM_OFFLOAD=${REF_PARAM_OFFLOAD:-false}
+
+MODEL_OVERRIDES=(
+  actor_rollout_ref.model.enable_gradient_checkpointing=${GRADIENT_CHECKPOINTING}
+  actor_rollout_ref.actor.fsdp_config.param_offload=${ACTOR_PARAM_OFFLOAD}
+  actor_rollout_ref.actor.fsdp_config.optimizer_offload=${ACTOR_OPTIMIZER_OFFLOAD}
+  actor_rollout_ref.ref.fsdp_config.param_offload=${REF_PARAM_OFFLOAD}
+)
+if (( LORA_RANK > 0 )); then
+  MODEL_OVERRIDES+=(
+    actor_rollout_ref.model.lora_rank=${LORA_RANK}
+    actor_rollout_ref.model.lora_alpha=${LORA_ALPHA}
+    actor_rollout_ref.model.target_modules=all-linear
+  )
+fi
 
 # ---------------------------------------------------------------------------
 # Auto-start PyRoKi IK server if not already running
@@ -93,6 +113,7 @@ python -m verl.trainer.main_ppo \
   data.truncation=error \
   data.return_raw_chat=True \
   actor_rollout_ref.model.path=${MODEL_PATH} \
+  "${MODEL_OVERRIDES[@]}" \
   actor_rollout_ref.actor.optim.lr=5e-6 \
   actor_rollout_ref.actor.use_kl_loss=${USE_KL_LOSS} \
   actor_rollout_ref.actor.kl_loss_coef=0.02 \
