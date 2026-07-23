@@ -19,3 +19,12 @@ def test_nut_assembly_minibatch_does_not_exceed_train_batch() -> None:
     mini_batch = int(re.search(r"PPO_MINI_BATCH_SIZE:-([0-9]+)", source).group(1))
 
     assert mini_batch <= train_batch
+
+
+def test_nut_assembly_vllm_capacity_matches_small_rollout_group() -> None:
+    source = Path("scripts/train_nut_assembly_grpo.sh").read_text()
+
+    max_num_seqs = int(re.search(r"MAX_NUM_SEQS:-([0-9]+)", source).group(1))
+    group_size = int(re.search(r"GROUP_SIZE:-([0-9]+)", source).group(1))
+
+    assert group_size <= max_num_seqs <= 32
