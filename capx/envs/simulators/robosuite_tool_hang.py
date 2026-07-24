@@ -127,13 +127,37 @@ class FrankaRobosuiteToolHang(RobosuiteBaseEnv):
 
     def get_observation(self) -> dict[str, Any]:
         observation = self.robosuite_env._get_observations(force_update=True)
+        stand_mount_id = self.robosuite_env.sim.model.site_name2id("stand_mount_site")
+        stand_mount_position = self.robosuite_env.sim.data.site_xpos[stand_mount_id]
+        stand_mount_matrix = self.robosuite_env.sim.data.site_xmat[stand_mount_id].reshape(3, 3)
+        frame_insert_position = stand_mount_position + stand_mount_matrix @ np.array(
+            [0.0, 0.0, -0.06]
+        )
+        frame_hang_id = self.robosuite_env.sim.model.site_name2id("frame_hang_site")
+        frame_intersection_id = self.robosuite_env.sim.model.site_name2id(
+            "frame_intersection_site"
+        )
+        frame_hang_position = self.robosuite_env.sim.data.site_xpos[frame_hang_id]
+        frame_intersection_position = self.robosuite_env.sim.data.site_xpos[
+            frame_intersection_id
+        ]
+        tool_hang_position = frame_hang_position + 0.3 * (
+            frame_intersection_position - frame_hang_position
+        )
         observation["tool_hang_poses"] = {
             "stand": self._body_pose("stand_root"),
             "stand_mount": self._site_pose("stand_mount_site"),
+            "frame_insert_target": self._pose_in_robot_base(
+                frame_insert_position, stand_mount_matrix
+            ),
             "frame": self._body_pose("frame_root"),
             "frame_grip": self._geom_pose("frame_grip_frame"),
             "frame_tip": self._site_pose("frame_tip_site"),
             "frame_hang": self._site_pose("frame_hang_site"),
+            "tool_hang_target": self._pose_in_robot_base(
+                tool_hang_position,
+                self.robosuite_env.sim.data.site_xmat[frame_hang_id],
+            ),
             "tool": self._body_pose("tool_root"),
             "tool_grip": self._body_pose("tool_grip_main"),
             "tool_hole": self._site_pose("tool_hole1_center"),

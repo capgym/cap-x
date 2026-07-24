@@ -37,6 +37,10 @@ class FrankaControlToolHangPrivilegedApi(FrankaControlNutAssemblyPrivilegedApi):
             Position XYZ and quaternion WXYZ.
         """
         normalized = object_name.lower()
+        if "target" in normalized and "frame" in normalized:
+            return self._pose("frame_insert_target")
+        if "target" in normalized and ("tool" in normalized or "wrench" in normalized):
+            return self._pose("tool_hang_target")
         if "hole" in normalized and ("tool" in normalized or "wrench" in normalized):
             return self._pose("tool_hole")
         if "grip" in normalized and ("tool" in normalized or "wrench" in normalized):
