@@ -22,7 +22,7 @@ class FrankaRobosuiteToolHang(RobosuiteBaseEnv):
     def __init__(
         self,
         controller_cfg: str = "capx/integrations/robosuite/controllers/config/robots/panda_joint_ctrl.json",
-        max_steps: int = 2000,
+        max_steps: int = 10000,
         seed: int | None = None,
         viser_debug: bool = False,
         privileged: bool = True,
