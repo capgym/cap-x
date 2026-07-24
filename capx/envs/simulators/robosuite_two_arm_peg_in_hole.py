@@ -59,8 +59,8 @@ class RobosuiteTwoArmPegInHoleEnv(RobosuiteHandoverEnv):
         model = self.robosuite_env.sim.model
         self.base_link_idx_0 = model.body_name2id("fixed_mount0_base")
         self.base_link_idx_1 = model.body_name2id("fixed_mount1_base")
-        self.eef_link_idx_0 = model.body_name2id("gripper0_right_eef")
-        self.eef_link_idx_1 = model.body_name2id("gripper1_right_eef")
+        self.eef_link_idx_0 = model.body_name2id("robot0_right_hand")
+        self.eef_link_idx_1 = model.body_name2id("robot1_right_hand")
         self.base_link_wxyz_xyz_0 = self._body_wxyz_xyz(self.base_link_idx_0)
         self.base_link_wxyz_xyz_1 = self._body_wxyz_xyz(self.base_link_idx_1)
         self.home_joint_position_0: np.ndarray | None = None
@@ -160,12 +160,10 @@ class RobosuiteTwoArmPegInHoleEnv(RobosuiteHandoverEnv):
         hole_position = self.robosuite_env.sim.data.body_xpos[hole_id]
         hole_matrix = self.robosuite_env.sim.data.body_xmat[hole_id].reshape(3, 3)
         target_position = hole_position + hole_matrix @ np.array([0.1, 0.0, 0.0])
-        align_peg_z_to_hole_x = vtf.SO3.from_rpy_radians(0.0, np.pi / 2.0, 0.0).as_matrix()
-        target_matrix = hole_matrix @ align_peg_z_to_hole_x
         observation["peg_in_hole_poses"] = {
             "peg": self._body_pose_in_robot0(self.robosuite_env.peg_body_id),
             "hole": self._body_pose_in_robot0(hole_id),
-            "hole_target": self._world_pose_in_robot0(target_position, target_matrix),
+            "hole_target": self._world_pose_in_robot0(target_position, hole_matrix),
             "arm0_eef": self._body_pose_in_robot0(self.eef_link_idx_0),
             "arm1_eef": self._body_pose_in_robot0(self.eef_link_idx_1),
         }
