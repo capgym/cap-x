@@ -54,7 +54,9 @@ Only numpy and scipy imports are allowed. Do not use try/except. Your response m
 FULL_PROMPT = """
 You are controlling a Franka Emika robot with API described below.
 Goal: insert both the square nut and the round nut onto their matching pegs.
-For each nut type returned by get_active_nut_types(), grasp that nut by its extruded handle. Before moving it, save the handle pose relative to the nut center with relative_pose. Compose the matching peg pose with the saved relative pose to obtain the insertion handle pose. Approach from above, close the gripper, return home for a stable IK seed, approach the insertion pose from above, lower 2 cm in world Z, release, and return home before handling the next nut.
+Loop over the strings returned by get_active_nut_types(). For each nut_type, use descriptive queries containing both the type and object kind: query the grasp with "extruded handle of <nut_type> nut", the rigid-body center with "<nut_type> nut", and the target with "<nut_type> peg". Never pass only "square" or "round" to an object or grasp query.
+Before moving the current nut, call sample_grasp_pose for its extruded handle and save that world-frame handle pose relative to the current nut center with relative_pose. Compose the matching peg pose with the saved relative pose to obtain the insertion handle pose.
+For each nut, execute this order: approach its current handle from above, close the gripper, return home for a stable IK seed, approach its insertion handle pose from above, lower the insertion position by 2 cm in world Z, release, and return home before starting the next loop iteration. Do not close the gripper for the first time at the peg, and do not use hard-coded object coordinates.
 You may write python code comments for reasoning but ONLY write the executable Python code and do not write it in code fences.
 The functions (APIs) below are already imported to the environment.
 If you want to use numpy, or scipy for spatial transformations, you need to import it explicitly.
