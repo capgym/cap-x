@@ -128,11 +128,12 @@ class FrankaRobosuiteToolHang(RobosuiteBaseEnv):
     def get_observation(self) -> dict[str, Any]:
         observation = self.robosuite_env._get_observations(force_update=True)
         stand_mount_id = self.robosuite_env.sim.model.site_name2id("stand_mount_site")
-        stand_mount_position = self.robosuite_env.sim.data.site_xpos[stand_mount_id]
         stand_mount_matrix = self.robosuite_env.sim.data.site_xmat[stand_mount_id].reshape(3, 3)
-        frame_insert_position = stand_mount_position + stand_mount_matrix @ np.array(
-            [0.0, 0.0, -0.06]
-        )
+        # RoboSuite's assembly predicate measures the frame tip against the
+        # stand base geom (not the mount site's opening). Use that exact
+        # position while retaining the upright mount orientation.
+        stand_base_id = self.robosuite_env.obj_geom_id["stand_base"]
+        frame_insert_position = self.robosuite_env.sim.data.geom_xpos[stand_base_id]
         frame_hang_id = self.robosuite_env.sim.model.site_name2id("frame_hang_site")
         frame_intersection_id = self.robosuite_env.sim.model.site_name2id(
             "frame_intersection_site"
