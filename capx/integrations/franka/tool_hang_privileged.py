@@ -37,13 +37,15 @@ class FrankaControlToolHangPrivilegedApi(FrankaControlNutAssemblyPrivilegedApi):
             Position XYZ and quaternion WXYZ.
         """
         normalized = object_name.lower()
+        if "hole" in normalized and ("tool" in normalized or "wrench" in normalized):
+            return self._pose("tool_hole")
+        if "grip" in normalized and ("tool" in normalized or "wrench" in normalized):
+            return self._pose("tool_grip")
         aliases = (
             (("stand", "mount"), "stand_mount"),
             (("frame", "grip"), "frame_grip"),
             (("frame", "tip"), "frame_tip"),
             (("frame", "hang"), "frame_hang"),
-            (("tool", "grip"), "tool_grip"),
-            (("tool", "hole"), "tool_hole"),
         )
         for words, key in aliases:
             if all(word in normalized for word in words):
