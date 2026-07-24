@@ -37,3 +37,15 @@ def test_self_rft_rejects_oracle_rollouts(tmp_path) -> None:
 
     with pytest.raises(ValueError, match="oracle rollout"):
         _validate_trial_dir(trial_dir)
+
+
+def test_self_rft_accepts_tasks_without_repository_oracle(tmp_path) -> None:
+    result_dir = tmp_path / "result"
+    trial_dir = result_dir / "trial_01_sandboxrc_0_reward_1.000_taskcompleted_1"
+    trial_dir.mkdir(parents=True)
+    (result_dir / "summary.json").write_text(json.dumps({"use_oracle_code": False}))
+    (trial_dir / "code.py").write_text("get_active_nut_types()\n")
+
+    source = _validate_trial_dir(trial_dir, oracle_code=None)
+
+    assert source["program"] == "get_active_nut_types()\n"

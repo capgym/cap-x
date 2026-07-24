@@ -37,3 +37,26 @@ def test_relative_pose_and_compose_pose_round_trip() -> None:
         Rotation.from_quat(child_quaternion[[1, 2, 3, 0]]).as_matrix(),
         atol=1e-8,
     )
+
+
+def test_object_queries_cover_round_and_random_single_variants() -> None:
+    class FakeEnv:
+        def active_nut_types(self) -> tuple[str, ...]:
+            return ("round",)
+
+        def get_observation(self) -> dict:
+            return {
+                "nut_poses": {
+                    "round_nut": np.array([1, 2, 3, 1, 0, 0, 0], dtype=float),
+                    "round_nut_handle": np.array([4, 5, 6, 1, 0, 0, 0], dtype=float),
+                    "round_peg": np.array([7, 8, 9, 1, 0, 0, 0], dtype=float),
+                }
+            }
+
+    api = object.__new__(FrankaControlNutAssemblyPrivilegedApi)
+    api._env = FakeEnv()
+
+    assert api.get_active_nut_types() == ("round",)
+    np.testing.assert_array_equal(api.get_object_pose("active nut")[0], [1, 2, 3])
+    np.testing.assert_array_equal(api.sample_grasp_pose("active nut handle")[0], [4, 5, 6])
+    np.testing.assert_array_equal(api.get_object_pose("matching peg")[0], [7, 8, 9])

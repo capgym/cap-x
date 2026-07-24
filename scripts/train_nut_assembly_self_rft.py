@@ -9,12 +9,14 @@ from pathlib import Path
 from typing import Any
 
 from capx.envs.tasks.franka.franka_nut_assembly import ORACLE_CODE
+from capx.envs.tasks import get_exec_env
 from capx.security import validate_generated_program
 
 
 @dataclass(frozen=True)
 class Args:
     base_model: str
+    data_source: str | None
     prompt_parquet: Path
     trial_dirs: list[Path]
     output_dir: Path
@@ -35,7 +37,9 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _validate_trial_dir(trial_dir: Path) -> dict[str, str]:
+def _validate_trial_dir(
+    trial_dir: Path, oracle_code: str | None = ORACLE_CODE
+) -> dict[str, str]:
     if "taskcompleted_1" not in trial_dir.name:
         raise ValueError(f"training source is not a successful trial: {trial_dir}")
     summary_path = trial_dir.parent / "summary.json"
@@ -48,7 +52,7 @@ def _validate_trial_dir(trial_dir: Path) -> dict[str, str]:
     guard = validate_generated_program(code)
     if not guard.allowed:
         raise ValueError(f"training source failed policy guard: {guard.reason}")
-    if code.strip() == ORACLE_CODE.strip():
+    if oracle_code is not None and code.strip() == oracle_code.strip():
         raise ValueError("expert oracle code cannot be used for self-RFT")
     return {
         "trial_dir": str(trial_dir.resolve()),
@@ -57,10 +61,12 @@ def _validate_trial_dir(trial_dir: Path) -> dict[str, str]:
     }
 
 
-def _load_prompt_rows(prompt_parquet: Path) -> list[dict[str, str]]:
+def _load_prompt_rows(prompt_parquet: Path) -> tuple[list[dict[str, Any]], str]:
     import pyarrow.parquet as pq
 
-    rows = pq.read_table(prompt_parquet, columns=["prompt", "reward_model"]).to_pylist()
+    rows = pq.read_table(
+        prompt_parquet, columns=["data_source", "prompt", "reward_model"]
+    ).to_pylist()
     if not rows:
         raise ValueError(f"prompt dataset is empty: {prompt_parquet}")
     leaked = [row for row in rows if row["reward_model"]["ground_truth"]["program"]]
@@ -69,14 +75,21 @@ def _load_prompt_rows(prompt_parquet: Path) -> list[dict[str, str]]:
     prompt = rows[0]["prompt"]
     if any(row["prompt"] != prompt for row in rows[1:]):
         raise ValueError("self-RFT expects one task prompt repeated across seeds")
-    return prompt
+    data_source = rows[0]["data_source"]
+    if any(row["data_source"] != data_source for row in rows[1:]):
+        raise ValueError("self-RFT expects one data source per prompt parquet")
+    return prompt, data_source
 
 
 def _parse_args() -> Args:
     parser = argparse.ArgumentParser(
-        description="Self-RFT on successful non-oracle NutAssembly policy rollouts."
+        description="Self-RFT on successful non-oracle RoboSuite policy rollouts."
     )
     parser.add_argument("--base-model", default="Qwen/Qwen2.5-Coder-7B-Instruct")
+    parser.add_argument(
+        "--data-source",
+        help="Expected CaP-X data source. Defaults to the value stored in the prompt parquet.",
+    )
     parser.add_argument("--prompt-parquet", type=Path, required=True)
     parser.add_argument("--trial-dir", dest="trial_dirs", type=Path, action="append", required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
@@ -102,8 +115,15 @@ def _train(args: Args) -> dict[str, Any]:
     from torch.utils.data import Dataset
     from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainingArguments
 
-    prompt = _load_prompt_rows(args.prompt_parquet)
-    sources = [_validate_trial_dir(path) for path in args.trial_dirs]
+    prompt, parquet_data_source = _load_prompt_rows(args.prompt_parquet)
+    if args.data_source is not None and args.data_source != parquet_data_source:
+        raise ValueError(
+            f"prompt data source {parquet_data_source!r} does not match "
+            f"--data-source {args.data_source!r}"
+        )
+    data_source = args.data_source or parquet_data_source
+    oracle_code = getattr(get_exec_env(data_source), "oracle_code", None)
+    sources = [_validate_trial_dir(path, oracle_code) for path in args.trial_dirs]
     tokenizer = AutoTokenizer.from_pretrained(args.base_model)
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -211,6 +231,7 @@ def _train(args: Args) -> dict[str, Any]:
     receipt = {
         "git_commit": _git_commit(),
         "oracle_code_used": False,
+        "data_source": data_source,
         "base_model": args.base_model,
         "prompt_parquet": str(args.prompt_parquet.resolve()),
         "prompt_parquet_sha256": _sha256(args.prompt_parquet),

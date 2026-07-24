@@ -42,6 +42,7 @@ class FrankaControlNutAssemblyPrivilegedApi(ApiBase):
     def functions(self) -> dict[str, Any]:
         return {
             "compose_pose": self.compose_pose,
+            "get_active_nut_types": self.get_active_nut_types,
             "get_object_pose": self.get_object_pose,
             "relative_pose": self.relative_pose,
             "sample_grasp_pose": self.sample_grasp_pose,
@@ -116,8 +117,29 @@ class FrankaControlNutAssemblyPrivilegedApi(ApiBase):
         Returns:
             offset: (3,) XYZ translation offset in meters, nut handle in the frame of the nut center
         """
-        obs = self._env.get_observation()
-        return -obs["nut_poses"]["nut_handle_to_center_offset"]
+        nut_type = self._resolve_nut_type(object_name)
+        obs = self._env.get_observation()["nut_poses"]
+        return obs[f"{nut_type}_nut"][:3] - obs[f"{nut_type}_nut_handle"][:3]
+
+    def get_active_nut_types(self) -> tuple[str, ...]:
+        """Return the nut types that must be inserted in this episode.
+
+        Returns:
+            Tuple containing ``"square"``, ``"round"``, or both in task order.
+        """
+        return tuple(self._env.active_nut_types())
+
+    def _resolve_nut_type(self, object_name: str) -> str:
+        normalized = object_name.lower()
+        explicit = [nut_type for nut_type in ("square", "round") if nut_type in normalized]
+        if explicit:
+            return explicit[0]
+        active = self.get_active_nut_types()
+        if len(active) == 1:
+            return active[0]
+        raise ValueError(
+            f"Object name must specify square or round when both nuts are active: {object_name}"
+        )
 
     def get_object_pose(self, object_name: str) -> tuple[np.ndarray, np.ndarray]:
         """Get the pose of an object in the environment from a natural language description.
@@ -129,18 +151,18 @@ class FrankaControlNutAssemblyPrivilegedApi(ApiBase):
             position: (3,) XYZ in meters.
             quaternion_wxyz: (4,) WXYZ unit quaternion.
         """
-        obs = self._env.get_observation()
-
-        if all(i in object_name for i in ["square", "nut", "handle"]):
-            return obs["nut_poses"]["square_nut_handle"][:3], obs["nut_poses"]["square_nut_handle"][
-                3:
-            ]
-        elif all(i in object_name for i in ["square", "nut"]):
-            return obs["nut_poses"]["square_nut"][:3], obs["nut_poses"]["square_nut"][3:]
-        elif any(i in object_name for i in ["block", "peg"]):
-            return obs["nut_poses"]["square_peg"][:3], obs["nut_poses"]["square_peg"][3:]
+        normalized = object_name.lower()
+        nut_type = self._resolve_nut_type(normalized)
+        poses = self._env.get_observation()["nut_poses"]
+        if "handle" in normalized:
+            key = f"{nut_type}_nut_handle"
+        elif "nut" in normalized:
+            key = f"{nut_type}_nut"
+        elif "block" in normalized or "peg" in normalized:
+            key = f"{nut_type}_peg"
         else:
             raise ValueError(f"Invalid object name: {object_name}")
+        return poses[key][:3], poses[key][3:]
 
     def sample_grasp_pose(self, object_name: str) -> tuple[np.ndarray, np.ndarray]:
         """Sample a grasp pose for an object in the environment from a natural language description.
@@ -153,16 +175,13 @@ class FrankaControlNutAssemblyPrivilegedApi(ApiBase):
             position: (3,) XYZ in meters.
             quaternion_wxyz: (4,) WXYZ unit quaternion.
         """
-        obs = self._env.get_observation()
-
-        if all(i in object_name for i in ["square", "nut", "handle"]):
-            return obs["nut_poses"]["square_nut_handle"][:3], obs["nut_poses"]["square_nut_handle"][
-                3:
-            ]
-        elif any(i in object_name for i in ["peg", "block"]):
-            return obs["nut_poses"]["square_peg"][:3], obs["nut_poses"]["square_peg"][3:]
-        else:
-            raise ValueError(f"Invalid object name: {object_name}")
+        normalized = object_name.lower()
+        nut_type = self._resolve_nut_type(normalized)
+        if "nut" not in normalized and "handle" not in normalized:
+            raise ValueError(f"Invalid grasp object name: {object_name}")
+        poses = self._env.get_observation()["nut_poses"]
+        key = f"{nut_type}_nut_handle"
+        return poses[key][:3], poses[key][3:]
 
     # def goto_pose(
     #     self, position: np.ndarray, quaternion_wxyz: np.ndarray, z_approach: float = 0.0

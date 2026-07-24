@@ -6,7 +6,7 @@ from argparse import Namespace
 from capx.security import validate_generated_program
 
 
-def validate_nut_assembly_results(args: Namespace) -> dict:
+def validate_robosuite_results(args: Namespace) -> dict:
     summary_path = args.result_dir / "summary.json"
     summary = json.loads(summary_path.read_text())
     if summary["total_trials"] != args.expected_trials:
@@ -43,3 +43,8 @@ def validate_nut_assembly_results(args: Namespace) -> dict:
         "videos": [str(path.resolve()) for path in videos],
         "git_commit": summary["git_commit"],
     }
+
+
+def validate_nut_assembly_results(args: Namespace) -> dict:
+    """Backward-compatible alias for the task-agnostic RoboSuite validator."""
+    return validate_robosuite_results(args)

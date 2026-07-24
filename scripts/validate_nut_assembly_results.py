@@ -4,7 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
-from capx.utils.nut_assembly_validation import validate_nut_assembly_results
+from capx.utils.nut_assembly_validation import validate_robosuite_results
 
 
 def parse_args() -> argparse.Namespace:
@@ -17,7 +17,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
-    print(json.dumps(validate_nut_assembly_results(parse_args()), indent=2))
+    print(json.dumps(validate_robosuite_results(parse_args()), indent=2))
 
 
 if __name__ == "__main__":

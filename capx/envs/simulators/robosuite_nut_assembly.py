@@ -1,8 +1,8 @@
 """Low-level Robosuite Franka environment compatible with FrankaControlApi.
 
-This module provides a thin wrapper around Robosuite's NutAssemblySquare environment
-that implements the same interface as FrankaPickPlaceLowLevel, making it
-hot-swappable for code execution environments.
+This module provides thin wrappers around RoboSuite's NutAssembly variants that
+implement the same interface as FrankaPickPlaceLowLevel, making them hot-swappable
+for code execution environments.
 """
 
 from __future__ import annotations
@@ -32,6 +32,18 @@ class FrankaRobosuiteNutAssembly(RobosuiteBaseEnv):
     """Robosuite Franka NutAssembly environment with FrankaPickPlaceLowLevel-compatible interface."""
 
     _SUBSAMPLE_RATE = 5
+    _ENV_CLASSES = {
+        "square": suite.environments.manipulation.nut_assembly.NutAssemblySquare,
+        "round": suite.environments.manipulation.nut_assembly.NutAssemblyRound,
+        "single": suite.environments.manipulation.nut_assembly.NutAssemblySingle,
+        "full": suite.environments.manipulation.nut_assembly.NutAssembly,
+    }
+    _TASK_PROMPTS = {
+        "square": "Insert the square nut onto the small square peg. Quaternions are WXYZ.",
+        "round": "Insert the round nut onto the small round peg. Quaternions are WXYZ.",
+        "single": "Insert the active nut onto its matching peg. Quaternions are WXYZ.",
+        "full": "Insert both nuts onto their matching pegs. Quaternions are WXYZ.",
+    }
 
     def __init__(
         self,
@@ -41,7 +53,15 @@ class FrankaRobosuiteNutAssembly(RobosuiteBaseEnv):
         viser_debug: bool = False,
         privileged: bool = True,
         enable_render: bool = False,
+        task_variant: str = "square",
     ) -> None:
+        if task_variant not in self._ENV_CLASSES:
+            raise ValueError(
+                f"unknown NutAssembly task variant {task_variant!r}; "
+                f"expected one of {sorted(self._ENV_CLASSES)}"
+            )
+        self.task_variant = task_variant
+        env_class = self._ENV_CLASSES[task_variant]
         super().__init__(
             controller_cfg=controller_cfg,
             max_steps=max_steps,
@@ -59,7 +79,7 @@ class FrankaRobosuiteNutAssembly(RobosuiteBaseEnv):
         if privileged:
             if not enable_render:
                 self.render_camera_names = []
-                self.robosuite_env = suite.environments.manipulation.nut_assembly.NutAssemblySquare(
+                self.robosuite_env = env_class(
                     robots=["Panda"],
                     use_camera_obs=False,
                     has_renderer=False,
@@ -75,7 +95,7 @@ class FrankaRobosuiteNutAssembly(RobosuiteBaseEnv):
                     horizon=max_steps,
                 )
             else:
-                self.robosuite_env = suite.environments.manipulation.nut_assembly.NutAssemblySquare(
+                self.robosuite_env = env_class(
                     robots=["Panda"],
                     has_renderer=False,
                     has_offscreen_renderer=True,
@@ -91,7 +111,7 @@ class FrankaRobosuiteNutAssembly(RobosuiteBaseEnv):
                     horizon=max_steps,
                 )
         else:
-            self.robosuite_env = suite.environments.manipulation.nut_assembly.NutAssemblySquare(
+            self.robosuite_env = env_class(
                 robots=["Panda"],
                 has_renderer=True,
                 has_offscreen_renderer=True,
@@ -106,9 +126,6 @@ class FrankaRobosuiteNutAssembly(RobosuiteBaseEnv):
                 horizon=max_steps,
             )
 
-        # nut type
-        self.nut_type = "square"
-        self.nut_id = self.robosuite_env.nut_to_id[self.nut_type]
         self.nuts = self.robosuite_env.nuts
 
         self._init_robot_links()
@@ -155,8 +172,14 @@ class FrankaRobosuiteNutAssembly(RobosuiteBaseEnv):
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         if seed is not None:
             self._rng = np.random.default_rng(seed)
+            task_rng = np.random.default_rng(seed)
+            self.robosuite_env.rng = task_rng
+            placement_initializer = self.robosuite_env.placement_initializer
+            for sampler in getattr(placement_initializer, "samplers", {}).values():
+                sampler.rng = task_rng
 
         first_obs = self.robosuite_env.reset()
+        self.nuts = self.robosuite_env.nuts
         self.home_joint_position = np.array(first_obs["robot0_joint_pos"], dtype=np.float64)
         self.robosuite_env.sim.data.qpos[:7] = np.array(
             [0, -1.585, 0, -2.645, 0, 1, 0.785]
@@ -182,9 +205,7 @@ class FrankaRobosuiteNutAssembly(RobosuiteBaseEnv):
             ]
         )
 
-        info = {
-            "task_prompt": "Insert the square nut onto the small square peg. Quaternions are WXYZ."
-        }
+        info = {"task_prompt": self._TASK_PROMPTS[self.task_variant]}
 
         return obs, info
 
@@ -253,7 +274,18 @@ class FrankaRobosuiteNutAssembly(RobosuiteBaseEnv):
             steps += 1
             self._sim_step_count += 1
 
-    def _get_nut_pose(self, robosuite_obs: dict[str, Any]) -> dict[str, list[float]]:
+    def active_nut_types(self) -> tuple[str, ...]:
+        """Return the nut types that must be placed in the current episode."""
+        if self.task_variant == "full":
+            return ("square", "round")
+        if self.task_variant == "single":
+            obj_to_use = self.robosuite_env.obj_to_use
+            if obj_to_use is None:
+                raise RuntimeError("NutAssemblySingle has not selected an active nut yet")
+            return ("square" if "square" in obj_to_use.lower() else "round",)
+        return (self.task_variant,)
+
+    def _get_nut_pose(self, _robosuite_obs: dict[str, Any]) -> dict[str, Any]:
         """Get nut pose in robot base frame."""
         invert_grasp_pose = vtf.SE3.from_matrix(
             np.array(
@@ -272,57 +304,63 @@ class FrankaRobosuiteNutAssembly(RobosuiteBaseEnv):
                 self.robosuite_env.sim.data.xpos[self.base_link_idx],
             ]
         )
-        _sq_xyzw = np.asarray(robosuite_obs["SquareNut_quat"], dtype=np.float64)
-        _sq_wxyz = np.array([_sq_xyzw[3], _sq_xyzw[0], _sq_xyzw[1], _sq_xyzw[2]], dtype=np.float64)
-        square_nut_world = vtf.SE3(
-            wxyz_xyz=np.concatenate([_sq_wxyz, robosuite_obs["SquareNut_pos"]])
-        )
-        nut_handle_to_center_offset = np.array([0.054, 0, 0])
-        square_nut_handle_world = square_nut_world @ vtf.SE3.from_translation(
-            nut_handle_to_center_offset
-        )
-
-        peg_world = vtf.SE3(
-            wxyz_xyz=np.concatenate(
-                [
-                    self.robosuite_env.sim.data.xquat[self.robosuite_env.peg1_body_id],
-                    self.robosuite_env.sim.data.xpos[self.robosuite_env.peg1_body_id],
-                ]
-            )
-        )
-
         rotate_by_180 = vtf.SE3.from_rotation(rotation=vtf.SO3.from_rpy_radians(0.0, 0.0, np.pi))
-
         base_transform = vtf.SE3(wxyz_xyz=base_link_wxyz_xyz).inverse()
-        square_nut_robot_base = (
-            base_transform @ square_nut_world @ rotate_by_180 @ invert_grasp_pose
-        )
-        square_nut_handle_robot_base = (
-            base_transform @ square_nut_handle_world @ rotate_by_180 @ invert_grasp_pose
-        )
-        peg_height = 0.1
-        peg_robot_base = (
-            base_transform
-            @ peg_world
-            @ vtf.SE3.from_translation(translation=np.array([0, 0, peg_height]))
-            @ invert_grasp_pose
-        )
-
-        return {
-            "nut_handle_to_center_offset": nut_handle_to_center_offset,
-            "square_nut": np.concatenate(
-                [square_nut_robot_base.translation(), square_nut_robot_base.rotation().wxyz]
-            ),
-            "square_nut_handle": np.concatenate(
-                [
-                    square_nut_handle_robot_base.translation(),
-                    square_nut_handle_robot_base.rotation().wxyz,
-                ]
-            ),
-            "square_peg": np.concatenate(
-                [peg_robot_base.translation(), peg_robot_base.rotation().wxyz]
-            ),
+        poses: dict[str, Any] = {"active_nut_types": self.active_nut_types()}
+        peg_ids = {
+            "square": self.robosuite_env.peg1_body_id,
+            "round": self.robosuite_env.peg2_body_id,
         }
+        for nut_type, nut in zip(("square", "round"), self.nuts):
+            body_id = self.robosuite_env.obj_body_id[nut.name]
+            nut_world = vtf.SE3(
+                wxyz_xyz=np.concatenate(
+                    [
+                        self.robosuite_env.sim.data.xquat[body_id],
+                        self.robosuite_env.sim.data.xpos[body_id],
+                    ]
+                )
+            )
+            handle_site_id = self.robosuite_env.sim.model.site_name2id(
+                nut.important_sites["handle"]
+            )
+            handle_world = vtf.SE3(
+                wxyz_xyz=np.concatenate(
+                    [
+                        self.robosuite_env.sim.data.xquat[body_id],
+                        self.robosuite_env.sim.data.site_xpos[handle_site_id],
+                    ]
+                )
+            )
+            peg_id = peg_ids[nut_type]
+            peg_world = vtf.SE3(
+                wxyz_xyz=np.concatenate(
+                    [
+                        self.robosuite_env.sim.data.xquat[peg_id],
+                        self.robosuite_env.sim.data.xpos[peg_id],
+                    ]
+                )
+            )
+            nut_robot_base = base_transform @ nut_world @ rotate_by_180 @ invert_grasp_pose
+            handle_robot_base = (
+                base_transform @ handle_world @ rotate_by_180 @ invert_grasp_pose
+            )
+            peg_robot_base = (
+                base_transform
+                @ peg_world
+                @ vtf.SE3.from_translation(translation=np.array([0, 0, 0.1]))
+                @ invert_grasp_pose
+            )
+            poses[f"{nut_type}_nut"] = np.concatenate(
+                [nut_robot_base.translation(), nut_robot_base.rotation().wxyz]
+            )
+            poses[f"{nut_type}_nut_handle"] = np.concatenate(
+                [handle_robot_base.translation(), handle_robot_base.rotation().wxyz]
+            )
+            poses[f"{nut_type}_peg"] = np.concatenate(
+                [peg_robot_base.translation(), peg_robot_base.rotation().wxyz]
+            )
+        return poses
 
     def compute_reward(self) -> float:
         """Compute reward from the Robosuite environment."""
@@ -541,4 +579,28 @@ class FrankaRobosuiteNutAssemblyVisual(FrankaRobosuiteNutAssembly):
         super().__init__(*args, **kwargs)
 
 
-__all__ = ["FrankaRobosuiteNutAssembly", "FrankaRobosuiteNutAssemblyVisual"]
+class FrankaRobosuiteNutAssemblyRound(FrankaRobosuiteNutAssembly):
+    def __init__(self, *args, **kwargs):
+        kwargs["task_variant"] = "round"
+        super().__init__(*args, **kwargs)
+
+
+class FrankaRobosuiteNutAssemblySingle(FrankaRobosuiteNutAssembly):
+    def __init__(self, *args, **kwargs):
+        kwargs["task_variant"] = "single"
+        super().__init__(*args, **kwargs)
+
+
+class FrankaRobosuiteNutAssemblyFull(FrankaRobosuiteNutAssembly):
+    def __init__(self, *args, **kwargs):
+        kwargs["task_variant"] = "full"
+        super().__init__(*args, **kwargs)
+
+
+__all__ = [
+    "FrankaRobosuiteNutAssembly",
+    "FrankaRobosuiteNutAssemblyFull",
+    "FrankaRobosuiteNutAssemblyRound",
+    "FrankaRobosuiteNutAssemblySingle",
+    "FrankaRobosuiteNutAssemblyVisual",
+]

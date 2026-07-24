@@ -26,6 +26,41 @@ If you want to use numpy, or scipy for spatial transformations, you need to impo
 Call the provided API functions directly. Do not redefine them or import external robot-control modules.
 Only numpy and scipy imports are allowed. Do not use try/except. Your response must be one compact, self-contained executable program.
 """
+
+ROUND_PROMPT = """
+You are controlling a Franka Emika robot with API described below.
+Goal: grasp and insert the round nut onto the round peg.
+Grasp the nut by its extruded handle. Before moving the robot, save the handle pose relative to the nut center with relative_pose. After grasping the handle, compose the round peg pose with that saved relative pose to obtain the insertion handle pose.
+Approach the handle from above, close the gripper, return home for a stable IK seed, approach the insertion handle pose from above, lower 2 cm in world Z, and release.
+You may write python code comments for reasoning but ONLY write the executable Python code and do not write it in code fences.
+The functions (APIs) below are already imported to the environment.
+If you want to use numpy, or scipy for spatial transformations, you need to import it explicitly.
+Call the provided API functions directly. Do not redefine them or import external robot-control modules.
+Only numpy and scipy imports are allowed. Do not use try/except. Your response must be one compact, self-contained executable program.
+"""
+
+SINGLE_PROMPT = """
+You are controlling a Franka Emika robot with API described below.
+Goal: insert the one active nut onto its matching peg. The active nut is randomly square or round on every reset.
+First call get_active_nut_types() and use the returned type in the object queries. Grasp the active nut by its extruded handle. Before moving the robot, save the handle pose relative to the nut center with relative_pose. After grasping, compose the matching peg pose with that saved relative pose to obtain the insertion handle pose.
+Approach the handle from above, close the gripper, return home for a stable IK seed, approach the insertion handle pose from above, lower 2 cm in world Z, and release.
+You may write python code comments for reasoning but ONLY write the executable Python code and do not write it in code fences.
+The functions (APIs) below are already imported to the environment.
+If you want to use numpy, or scipy for spatial transformations, you need to import it explicitly.
+Call the provided API functions directly. Do not redefine them or import external robot-control modules.
+Only numpy and scipy imports are allowed. Do not use try/except. Your response must be one compact, self-contained executable program.
+"""
+
+FULL_PROMPT = """
+You are controlling a Franka Emika robot with API described below.
+Goal: insert both the square nut and the round nut onto their matching pegs.
+For each nut type returned by get_active_nut_types(), grasp that nut by its extruded handle. Before moving it, save the handle pose relative to the nut center with relative_pose. Compose the matching peg pose with the saved relative pose to obtain the insertion handle pose. Approach from above, close the gripper, return home for a stable IK seed, approach the insertion pose from above, lower 2 cm in world Z, release, and return home before handling the next nut.
+You may write python code comments for reasoning but ONLY write the executable Python code and do not write it in code fences.
+The functions (APIs) below are already imported to the environment.
+If you want to use numpy, or scipy for spatial transformations, you need to import it explicitly.
+Call the provided API functions directly. Do not redefine them or import external robot-control modules.
+Only numpy and scipy imports are allowed. Do not use try/except. Your response must be one compact, self-contained executable program.
+"""
 ORACLE_CODE = """
 import numpy as np
 from scipy.spatial.transform import Rotation as R
@@ -124,6 +159,24 @@ class FrankaNutAssemblyCodeEnv(CodeExecutionEnvBase):
         return observation, reward, False, False, info
 
 
+class FrankaNutAssemblyRoundCodeEnv(FrankaNutAssemblyCodeEnv):
+    prompt = ROUND_PROMPT
+    oracle_code = None
+
+
+class FrankaNutAssemblySingleCodeEnv(FrankaNutAssemblyCodeEnv):
+    prompt = SINGLE_PROMPT
+    oracle_code = None
+
+
+class FrankaNutAssemblyFullCodeEnv(FrankaNutAssemblyCodeEnv):
+    prompt = FULL_PROMPT
+    oracle_code = None
+
+
 __all__ = [
     "FrankaNutAssemblyCodeEnv",
+    "FrankaNutAssemblyFullCodeEnv",
+    "FrankaNutAssemblyRoundCodeEnv",
+    "FrankaNutAssemblySingleCodeEnv",
 ]

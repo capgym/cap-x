@@ -21,6 +21,7 @@ initialized_envs = {}
 _ROBOT_API_NAMES = {
     "close_gripper",
     "compose_pose",
+    "get_active_nut_types",
     "get_object_pose",
     "goto_home_joint_position",
     "goto_pose",

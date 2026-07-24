@@ -10,7 +10,12 @@ from .base import (
 )
 from .franka.franka_cube_restack import FrankaRestackCodeEnv
 from .franka.franka_lift import FrankaLiftCodeEnv
-from .franka.franka_nut_assembly import FrankaNutAssemblyCodeEnv
+from .franka.franka_nut_assembly import (
+    FrankaNutAssemblyCodeEnv,
+    FrankaNutAssemblyFullCodeEnv,
+    FrankaNutAssemblyRoundCodeEnv,
+    FrankaNutAssemblySingleCodeEnv,
+)
 from .franka.franka_pick_place import FrankaPickPlaceCodeEnv
 from .franka.franka_spill_wipe import FrankaSpillWipeCodeEnv
 from .franka.two_arm_handover import TwoArmHandoverCodeEnv
@@ -54,6 +59,33 @@ register_config(
     "franka_nut_assembly_code_env",
     CodeExecEnvConfig(
         low_level="franka_robosuite_nut_assembly_low_level",
+        apis=["FrankaControlNutAssemblyPrivilegedApi"],
+        privileged=True,
+    ),
+)
+register_exec_env("franka_nut_assembly_round_code_env", FrankaNutAssemblyRoundCodeEnv)
+register_config(
+    "franka_nut_assembly_round_code_env",
+    CodeExecEnvConfig(
+        low_level="franka_robosuite_nut_assembly_round_low_level",
+        apis=["FrankaControlNutAssemblyPrivilegedApi"],
+        privileged=True,
+    ),
+)
+register_exec_env("franka_nut_assembly_single_code_env", FrankaNutAssemblySingleCodeEnv)
+register_config(
+    "franka_nut_assembly_single_code_env",
+    CodeExecEnvConfig(
+        low_level="franka_robosuite_nut_assembly_single_low_level",
+        apis=["FrankaControlNutAssemblyPrivilegedApi"],
+        privileged=True,
+    ),
+)
+register_exec_env("franka_nut_assembly_full_code_env", FrankaNutAssemblyFullCodeEnv)
+register_config(
+    "franka_nut_assembly_full_code_env",
+    CodeExecEnvConfig(
+        low_level="franka_robosuite_nut_assembly_full_low_level",
         apis=["FrankaControlNutAssemblyPrivilegedApi"],
         privileged=True,
     ),

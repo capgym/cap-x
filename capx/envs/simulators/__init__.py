@@ -14,8 +14,13 @@ try:
     from .robosuite_spill_wipe import FrankaRobosuiteSpillWipeLowLevel
     from .robosuite_handover import RobosuiteHandoverEnv
     from .robosuite_two_arm_lift import RobosuiteTwoArmLiftEnv
-    from .robosuite_nut_assembly import FrankaRobosuiteNutAssembly
-    from .robosuite_nut_assembly import FrankaRobosuiteNutAssemblyVisual
+    from .robosuite_nut_assembly import (
+        FrankaRobosuiteNutAssembly,
+        FrankaRobosuiteNutAssemblyFull,
+        FrankaRobosuiteNutAssemblyRound,
+        FrankaRobosuiteNutAssemblySingle,
+        FrankaRobosuiteNutAssemblyVisual,
+    )
 
     register_env("franka_robosuite_cube_lift_low_level", FrankaRobosuiteCubeLiftLowLevel)
     register_env("franka_robosuite_cubes_low_level", FrankaRobosuiteCubesLowLevel)
@@ -24,6 +29,18 @@ try:
 
 
     register_env("franka_robosuite_nut_assembly_low_level", FrankaRobosuiteNutAssembly)
+    register_env(
+        "franka_robosuite_nut_assembly_round_low_level",
+        FrankaRobosuiteNutAssemblyRound,
+    )
+    register_env(
+        "franka_robosuite_nut_assembly_single_low_level",
+        FrankaRobosuiteNutAssemblySingle,
+    )
+    register_env(
+        "franka_robosuite_nut_assembly_full_low_level",
+        FrankaRobosuiteNutAssemblyFull,
+    )
     register_env("franka_robosuite_nut_assembly_low_level_visual", FrankaRobosuiteNutAssemblyVisual)
 
     register_env("two_arm_handover_robosuite", RobosuiteHandoverEnv)

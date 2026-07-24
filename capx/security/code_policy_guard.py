@@ -28,6 +28,7 @@ _ALLOWED_IMPORT_ROOTS = {"numpy", "scipy"}
 
 _DOCUMENTED_API_NAMES = {
     "close_gripper",
+    "get_active_nut_types",
     "get_object_pose",
     "goto_home_joint_position",
     "goto_pose",
