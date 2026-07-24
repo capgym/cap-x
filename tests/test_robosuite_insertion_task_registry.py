@@ -6,6 +6,7 @@ def test_additional_nut_assembly_tasks_are_registered_without_oracles() -> None:
         "franka_nut_assembly_round_code_env": "franka_robosuite_nut_assembly_round_low_level",
         "franka_nut_assembly_single_code_env": "franka_robosuite_nut_assembly_single_low_level",
         "franka_nut_assembly_full_code_env": "franka_robosuite_nut_assembly_full_low_level",
+        "franka_tool_hang_code_env": "franka_robosuite_tool_hang_low_level",
     }
 
     for data_source, low_level in expected.items():

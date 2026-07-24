@@ -18,6 +18,7 @@ from .franka.franka_nut_assembly import (
 )
 from .franka.franka_pick_place import FrankaPickPlaceCodeEnv
 from .franka.franka_spill_wipe import FrankaSpillWipeCodeEnv
+from .franka.franka_tool_hang import FrankaToolHangCodeEnv
 from .franka.two_arm_handover import TwoArmHandoverCodeEnv
 from .franka.two_arm_lift import TwoArmLiftCodeEnv
 
@@ -98,6 +99,15 @@ register_config(
         low_level="franka_robosuite_nut_assembly_low_level_visual",
         apis=["FrankaControlNutAssemblyVisualApi"],
         privileged=False,
+    ),
+)
+register_exec_env("franka_tool_hang_code_env", FrankaToolHangCodeEnv)
+register_config(
+    "franka_tool_hang_code_env",
+    CodeExecEnvConfig(
+        low_level="franka_robosuite_tool_hang_low_level",
+        apis=["FrankaControlToolHangPrivilegedApi"],
+        privileged=True,
     ),
 )
 register_exec_env("franka_pick_place_multi_code_env", FrankaPickPlaceCodeEnv)
