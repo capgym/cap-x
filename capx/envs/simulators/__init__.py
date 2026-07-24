@@ -15,6 +15,7 @@ try:
     from .robosuite_handover import RobosuiteHandoverEnv
     from .robosuite_two_arm_lift import RobosuiteTwoArmLiftEnv
     from .robosuite_tool_hang import FrankaRobosuiteToolHang
+    from .robosuite_two_arm_peg_in_hole import RobosuiteTwoArmPegInHoleEnv
     from .robosuite_nut_assembly import (
         FrankaRobosuiteNutAssembly,
         FrankaRobosuiteNutAssemblyFull,
@@ -44,6 +45,7 @@ try:
     )
     register_env("franka_robosuite_nut_assembly_low_level_visual", FrankaRobosuiteNutAssemblyVisual)
     register_env("franka_robosuite_tool_hang_low_level", FrankaRobosuiteToolHang)
+    register_env("two_arm_peg_in_hole_robosuite", RobosuiteTwoArmPegInHoleEnv)
 
     register_env("two_arm_handover_robosuite", RobosuiteHandoverEnv)
     register_env("two_arm_lift_robosuite", RobosuiteTwoArmLiftEnv)

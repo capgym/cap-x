@@ -21,6 +21,7 @@ from .franka.franka_spill_wipe import FrankaSpillWipeCodeEnv
 from .franka.franka_tool_hang import FrankaToolHangCodeEnv
 from .franka.two_arm_handover import TwoArmHandoverCodeEnv
 from .franka.two_arm_lift import TwoArmLiftCodeEnv
+from .franka.two_arm_peg_in_hole import TwoArmPegInHoleCodeEnv
 
 register_exec_env("franka_real_code_env", FrankaPickPlaceCodeEnv)
 register_config(
@@ -107,6 +108,15 @@ register_config(
     CodeExecEnvConfig(
         low_level="franka_robosuite_tool_hang_low_level",
         apis=["FrankaControlToolHangPrivilegedApi"],
+        privileged=True,
+    ),
+)
+register_exec_env("two_arm_peg_in_hole_code_env", TwoArmPegInHoleCodeEnv)
+register_config(
+    "two_arm_peg_in_hole_code_env",
+    CodeExecEnvConfig(
+        low_level="two_arm_peg_in_hole_robosuite",
+        apis=["FrankaTwoArmPegInHolePrivilegedApi"],
         privileged=True,
     ),
 )

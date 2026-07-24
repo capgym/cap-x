@@ -1,0 +1,22 @@
+# Non-oracle RoboSuite TwoArmPegInHole evaluation.
+env:
+  _target_: capx.envs.tasks.franka.two_arm_peg_in_hole.TwoArmPegInHoleCodeEnv
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    low_level: two_arm_peg_in_hole_robosuite
+    privileged: true
+    apis:
+      - FrankaTwoArmPegInHolePrivilegedApi
+
+api_servers:
+  - _target_: capx.serving.launch_pyroki_server.main
+    port: 8116
+    host: 127.0.0.1
+    robot: panda_description
+    target_link: panda_hand
+
+record_video: true
+output_dir: ./outputs/two_arm_peg_in_hole_privileged
+use_oracle_code: false
+trials: 100
+num_workers: 4

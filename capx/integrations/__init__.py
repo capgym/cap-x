@@ -9,6 +9,7 @@ from .franka.nut_assembly_visual import FrankaControlNutAssemblyVisualApi
 from .franka.spill_wipe import FrankaControlSpillWipeApi
 from .franka.spill_wipe_privileged import FrankaControlSpillWipePrivilegedApi
 from .franka.tool_hang_privileged import FrankaControlToolHangPrivilegedApi
+from .franka.two_arm_peg_in_hole_privileged import FrankaTwoArmPegInHolePrivilegedApi
 from .franka.handover_privileged import FrankaHandoverPrivilegedApi
 from .franka.handover import FrankaHandoverApi
 from .franka.handover_reduced import FrankaHandoverApiReduced
@@ -101,6 +102,7 @@ register_api(
 register_api("FrankaControlNutAssemblyPrivilegedApi", FrankaControlNutAssemblyPrivilegedApi)
 register_api("FrankaControlNutAssemblyVisualApi", FrankaControlNutAssemblyVisualApi)
 register_api("FrankaControlToolHangPrivilegedApi", FrankaControlToolHangPrivilegedApi)
+register_api("FrankaTwoArmPegInHolePrivilegedApi", FrankaTwoArmPegInHolePrivilegedApi)
 register_api(
     "FrankaControlNutAssemblyApiReduced",
     lambda env: FrankaControlApiReduced(env, is_peg_assembly=True),
