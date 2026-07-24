@@ -594,6 +594,11 @@ class FrankaRobosuiteNutAssemblySingle(FrankaRobosuiteNutAssembly):
 class FrankaRobosuiteNutAssemblyFull(FrankaRobosuiteNutAssembly):
     def __init__(self, *args, **kwargs):
         kwargs["task_variant"] = "full"
+        # The full task executes two complete grasp-and-insert sequences. The
+        # single-nut 1000-step horizon can expire after placing the first nut,
+        # which makes every subsequent control call fail even though the task
+        # is still incomplete.
+        kwargs.setdefault("max_steps", 2000)
         super().__init__(*args, **kwargs)
 
 
