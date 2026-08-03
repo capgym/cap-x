@@ -69,7 +69,6 @@ Homie+Gateway 启动方式
   /home/peilab/development/WholeBodyGateway/robot_control_gateway/build-g1/bin/humanoid_g1_control_gateway \
     enx6c1ff7c1192d \
     --dry-run
-
     --arm-timeout-mode damping
 
   # 终端 2：OpenHomie 下肢 policy
@@ -101,7 +100,7 @@ Homie+Gateway 启动方式
 
 ## G1 站立 + CaP-X 抓取四终端启动顺序
 
-前提：机器人相机服务已启动；G1 与本机通过 `enx6c1ff7c1192d` 联通；现场有人看护急停。协同模式下只有 Gateway 发布 `rt/lowcmd`，不要同时启动其它直发上肢/全身控制程序。
+前提：机器人相机服务已启动；G1 与本机通过 `enx00e04c3601b7` 联通；现场有人看护急停。协同模式下只有 Gateway 发布 `rt/lowcmd`，不要同时启动其它直发上肢/全身控制程序。
 
 ### 终端 1：启动 WholeBodyGateway
 
@@ -111,7 +110,7 @@ Homie+Gateway 启动方式
 cd /home/peilab/development/cap-x
 
 /home/peilab/development/WholeBodyGateway/robot_control_gateway/build-g1-v2/bin/humanoid_g1_control_gateway \
-  enx6c1ff7c1192d \
+  enx00e04c3601b7 \
   --arm-timeout-mode damping
 ```
 
@@ -127,7 +126,8 @@ python g1_gym_deploy/scripts/deploy_policy.py
 按 OpenHomie 提示完成 G1 站立。确认 Gateway 收到下肢命令后，再启动上肢抓取。
 
 ### 终端 3：启动 G1 图像桥接和 SAM3 viewer
-
+export NO_PROXY=127.0.0.1,localhost,192.168.123.0/24
+export no_proxy=127.0.0.1,localhost,192.168.123.0/24
 先启动图像服务。此时 CaP-X launch 还没有开启 9000 observation server，所以会看到 `Waiting for 127.0.0.1:9000`，这是正常的；终端 4 启动后会自动连上。
 
 ```bash
@@ -159,6 +159,7 @@ Viewer 地址：`http://127.0.0.1:9010/`。按 `R` 可以重新抓取最新图�
 cd /home/peilab/development/cap-x
 source .venv/bin/activate
 
+export UNITREE_NETWORK_INTERFACE=enx00e04c3601b7
 export CAPX_G1_DRY_RUN=false
 export NO_PROXY=127.0.0.1,localhost,192.168.123.0/24
 export no_proxy=127.0.0.1,localhost,192.168.123.0/24
