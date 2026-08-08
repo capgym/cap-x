@@ -120,8 +120,19 @@ def _viewer_sample_for_display(camera_api: Any, sample: Any) -> Any:
     """Return the exact RGB/depth frame that should be shown in the live viewer."""
 
     config = getattr(camera_api, "config", None)
+    intrinsics = None if config is None else getattr(config, "intrinsics", None)
+    pose_mat = None if config is None else getattr(config, "pose_mat", None)
     if not getattr(config, "align_rgb_to_depth", False):
-        return sample
+        return SimpleNamespace(
+            rgb_key=getattr(sample, "rgb_key", "rgb"),
+            depth_key=getattr(sample, "depth_key", None),
+            timestamp=getattr(sample, "timestamp", 0.0),
+            rgb=getattr(sample, "rgb"),
+            depth_m=getattr(sample, "depth_m", None),
+            depth_image=getattr(sample, "depth_image", None),
+            intrinsics=intrinsics,
+            pose_mat=pose_mat,
+        )
 
     observation = camera_api.sample_to_capx_observation(sample)
     camera = observation["camera_top"]
@@ -135,6 +146,8 @@ def _viewer_sample_for_display(camera_api: Any, sample: Any) -> Any:
         rgb=camera["images"]["rgb"],
         depth_m=depth,
         depth_image=None,
+        intrinsics=camera.get("intrinsics_matrix", intrinsics),
+        pose_mat=camera.get("pose_mat", pose_mat),
     )
 
 def _run_viewer_sample_loop(
@@ -172,15 +185,39 @@ def _run_viewer_sam3_loop(
     log_errors: bool = True,
 ) -> None:
     last_frame_id: int | None = None
+    pending_request: Any | None = None
     while not stop_event.is_set():
+        take_request = getattr(viewer, "take_sam3_refresh_request", None)
+        if pending_request is None and callable(take_request):
+            pending_request = take_request()
         frame_snapshot = viewer.latest_snapshot()
-        if frame_snapshot is None or frame_snapshot.frame_id == last_frame_id:
+        if frame_snapshot is None:
+            stop_event.wait(min(period_s, 0.1) if pending_request is not None else period_s)
+            continue
+        if pending_request is not None:
+            requested_at = float(getattr(pending_request, "requested_time", time.time()))
+            after_frame_id = int(getattr(pending_request, "after_frame_id", 0))
+            if int(frame_snapshot.frame_id) <= after_frame_id and time.time() - requested_at < 1.0:
+                stop_event.wait(0.05)
+                continue
+        elif frame_snapshot.frame_id == last_frame_id:
             stop_event.wait(period_s)
             continue
         last_frame_id = int(frame_snapshot.frame_id)
         try:
             results = sam3_segment_fn(frame_snapshot.rgb, text_prompt=prompt)
             viewer.update_sam3_results(frame_snapshot, prompt=prompt, results=results)
+            if pending_request is not None:
+                grasp = None
+                sam3_snapshot = getattr(viewer, "_latest_sam3", None)
+                if sam3_snapshot is not None:
+                    grasp = getattr(sam3_snapshot, "grasp", None)
+                print(
+                    f"[g1-zmq-capx] viewer SAM3 refresh request "
+                    f"{getattr(pending_request, 'request_id', '?')} processed "
+                    f"frame={frame_snapshot.frame_id} grasp={grasp}"
+                )
+            pending_request = None
         except KeyboardInterrupt:
             stop_event.set()
             break
@@ -189,6 +226,7 @@ def _run_viewer_sam3_loop(
                 viewer.update_sam3_error(frame_snapshot, prompt=prompt, error=str(exc))
             if log_errors and not stop_event.is_set():
                 print(f"[g1-zmq-capx] viewer SAM3 error: {exc}")
+            pending_request = None
         stop_event.wait(period_s)
 
 

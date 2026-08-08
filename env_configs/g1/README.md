@@ -22,12 +22,12 @@ uv --cache-dir /home/peilab/development/cap-x/.uv-cache pip install -p .venv/bin
 设置可以连到 G1 DDS 网络的网卡：
 
 ```bash
-export UNITREE_NETWORK_INTERFACE=enx6c1ff7c1192d
+export UNITREE_NETWORK_INTERFACE=<G1 DDS interface>
 export CAPX_G1_DRY_RUN=false
 ```
 
-如果没有设置 `UNITREE_NETWORK_INTERFACE`，`G1RealLowLevel` 默认使用
-`enx6c1ff7c1192d`。如果没有设置 `CAPX_G1_DRY_RUN`，`G1RealLowLevel`
+必须设置 `UNITREE_NETWORK_INTERFACE` 为当前连接 G1 DDS 网段的网卡名。
+如果没有设置 `CAPX_G1_DRY_RUN`，`G1RealLowLevel`
 会默认保持 dry-run 模式，避免误发真机命令。
 
 ## CaP-X 启动方式
@@ -112,7 +112,7 @@ capx/integrations/g1/vision.py
 
 核心类：
 
-- `G1CameraConfig`: 配置 `192.168.123.164:5555`、`enx6c1ff7c1192d`、`ego_view` 和 `ego_view_depth_m`。
+- `G1CameraConfig`: 配置 `192.168.123.164:5555`、当前 G1 DDS 网卡、`ego_view` 和 `ego_view_depth_m`。
 - `G1CameraSample`: 一帧 RGB、depth image、可选 metric depth。
 - `G1CameraApi`: 已注册为 `G1CameraApi`，可把相机帧转成 `G1RealLowLevel` 接收的 `camera_top` observation。
 
@@ -173,3 +173,12 @@ CAPX_G1_DRY_RUN=true \
 输出入口是 `./outputs/g1_grasp_bottle_preflight/preflight_report.html` 和
 `./outputs/g1_grasp_bottle_preflight/preflight_summary.json`。这个 preflight 不会下发关节命令，只会
 求解 PyRoKi IK 并保存最终右臂 7-DoF 关节角。
+
+
+## 左臂控制
+
+`G1LeftRealControlApi` 为 coding agent 提供与 `G1RealControlApi` 完全相同的函数集合：`goto_pose`、`move_to_joints`、`sample_grasp_center_pose`、`grasp_at_pinch_center`、`move_to_pregrasp_side_pose`、`open_gripper`、`close_gripper`、`close_index_pinch`、`close_middle_pinch`、`set_gripper_trigger_squeeze` 和 `move_hand_joints`。
+
+使用 `env_configs/g1/g1_grasp_bottle_left.yaml` 时，低层环境、Gateway `arm_action[0:7]`、PyRoKi `left_hand_palm_link` 和 Dex3 left topic 会一起切换到左侧。左臂 7 个关节顺序为 `left_shoulder_pitch_joint`、`left_shoulder_roll_joint`、`left_shoulder_yaw_joint`、`left_elbow_joint`、`left_wrist_roll_joint`、`left_wrist_pitch_joint`、`left_wrist_yaw_joint`。
+
+左手闭合方向按 URDF 镜像处理；首次真机使用左侧预备姿态前，先以 `CAPX_G1_DRY_RUN=true` 检查轨迹，再由现场人员在站立平衡状态下执行。

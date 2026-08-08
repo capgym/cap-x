@@ -254,6 +254,54 @@ def test_bridge_viewer_sam3_loop_updates_latest_frame() -> None:
     assert np.array_equal(results[0]["mask"], np.zeros((4, 5), dtype=bool))
 
 
+def test_bridge_viewer_sam3_loop_handles_manual_refresh_request() -> None:
+    import threading
+    from types import SimpleNamespace
+
+    from tools.g1_vision_bridge.client_zmq_to_capx import _run_viewer_sam3_loop
+
+    stop_event = threading.Event()
+    snapshot = SimpleNamespace(
+        frame_id=8,
+        rgb=np.zeros((4, 5, 3), dtype=np.uint8),
+    )
+    calls = []
+
+    class FakeViewer:
+        def __init__(self) -> None:
+            self.request = SimpleNamespace(request_id=3, requested_time=0.0, after_frame_id=8)
+            self.latest_sam3 = None
+
+        def take_sam3_refresh_request(self):
+            request = self.request
+            self.request = None
+            return request
+
+        def latest_snapshot(self):
+            return snapshot
+
+        def update_sam3_results(self, frame_snapshot, *, prompt, results):
+            calls.append((frame_snapshot.frame_id, prompt, results))
+            self._latest_sam3 = SimpleNamespace(grasp={"position_world": [0.1, 0.2, 0.3]})
+            stop_event.set()
+
+    def fake_segment(rgb, text_prompt):
+        assert rgb.shape == (4, 5, 3)
+        return [{"mask": np.zeros((4, 5), dtype=bool), "box": [0, 0, 1, 1], "score": 0.8}]
+
+    _run_viewer_sam3_loop(
+        FakeViewer(),
+        fake_segment,
+        "plastic water bottle",
+        stop_event,
+        period_s=0.0,
+        log_errors=False,
+    )
+
+    assert len(calls) == 1
+    assert calls[0][0] == 8
+
+
 def test_bridge_viewer_sample_loop_updates_independently() -> None:
     import threading
     from types import SimpleNamespace
@@ -262,11 +310,24 @@ def test_bridge_viewer_sample_loop_updates_independently() -> None:
 
     stop_event = threading.Event()
     samples = [
-        SimpleNamespace(rgb_key="ego_view", timestamp=float(idx))
+        SimpleNamespace(
+            rgb_key="ego_view",
+            depth_key="ego_view_depth_m",
+            timestamp=float(idx),
+            rgb=np.zeros((2, 2, 3), dtype=np.uint8),
+            depth_m=np.ones((2, 2), dtype=np.float32),
+            depth_image=None,
+        )
         for idx in range(3)
     ]
 
     class FakeCameraApi:
+        config = SimpleNamespace(
+            align_rgb_to_depth=False,
+            intrinsics=np.eye(3, dtype=np.float64),
+            pose_mat=np.eye(4, dtype=np.float64),
+        )
+
         def samples(self):
             yield from samples
 
@@ -289,7 +350,10 @@ def test_bridge_viewer_sample_loop_updates_independently() -> None:
         log_errors=False,
     )
 
-    assert viewer.seen == samples
+    assert [sample.rgb_key for sample in viewer.seen] == ["ego_view", "ego_view", "ego_view"]
+    assert [sample.timestamp for sample in viewer.seen] == [0.0, 1.0, 2.0]
+    assert np.array_equal(viewer.seen[0].intrinsics, np.eye(3))
+    assert np.array_equal(viewer.seen[0].pose_mat, np.eye(4))
 
 
 
@@ -309,8 +373,12 @@ def test_bridge_viewer_displays_aligned_frame_when_alignment_is_enabled() -> Non
     aligned_rgb = np.full((3, 4, 3), 123, dtype=np.uint8)
     aligned_depth = np.full((3, 4, 1), 0.75, dtype=np.float32)
 
+    intrinsics = np.eye(3, dtype=np.float64) * 2.0
+    pose_mat = np.eye(4, dtype=np.float64)
+    pose_mat[:3, 3] = [0.1, 0.2, 0.3]
+
     class FakeCameraApi:
-        config = SimpleNamespace(align_rgb_to_depth=True)
+        config = SimpleNamespace(align_rgb_to_depth=True, intrinsics=np.eye(3), pose_mat=np.eye(4))
 
         def sample_to_capx_observation(self, camera_sample):
             assert camera_sample is sample
@@ -319,7 +387,9 @@ def test_bridge_viewer_displays_aligned_frame_when_alignment_is_enabled() -> Non
                     "images": {
                         "rgb": aligned_rgb,
                         "depth": aligned_depth,
-                    }
+                    },
+                    "intrinsics_matrix": intrinsics,
+                    "pose_mat": pose_mat,
                 }
             }
 
@@ -328,6 +398,8 @@ def test_bridge_viewer_displays_aligned_frame_when_alignment_is_enabled() -> Non
     assert displayed.rgb_key == "ego_view:aligned_to_depth"
     assert np.array_equal(displayed.rgb, aligned_rgb)
     assert np.array_equal(displayed.depth_m, aligned_depth[:, :, 0])
+    assert np.array_equal(displayed.intrinsics, intrinsics)
+    assert np.array_equal(displayed.pose_mat, pose_mat)
 
 def test_web_viewer_payload_includes_sam3_overlay_when_available() -> None:
     from types import SimpleNamespace
@@ -368,6 +440,52 @@ def test_web_viewer_payload_includes_sam3_overlay_when_available() -> None:
     assert payload["sam3"]["result_count"] == 1
     assert payload["sam3"]["best_score"] == pytest.approx(0.91)
     assert payload["sam3"]["overlay_data_url"].startswith("data:image/jpeg;base64,")
+
+
+def test_web_viewer_computes_grasp_point_from_sam3_mask_depth_and_camera_pose() -> None:
+    from types import SimpleNamespace
+
+    from tools.g1_vision_bridge.web_viewer import build_frame_payload, snapshot_from_sample, update_snapshot_sam3
+
+    depth = np.ones((3, 3), dtype=np.float32)
+    intrinsics = np.array(
+        [
+            [100.0, 0.0, 1.0],
+            [0.0, 100.0, 1.0],
+            [0.0, 0.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
+    pose_mat = np.eye(4, dtype=np.float64)
+    pose_mat[:3, 3] = [0.5, -0.2, 0.1]
+    mask = np.zeros((3, 3), dtype=bool)
+    mask[1, 1] = True
+    sample = SimpleNamespace(
+        rgb_key="ego_view",
+        depth_key="ego_view_depth_m",
+        timestamp=1.0,
+        rgb=np.zeros((3, 3, 3), dtype=np.uint8),
+        depth_m=depth,
+        depth_image=None,
+        intrinsics=intrinsics,
+        pose_mat=pose_mat,
+    )
+
+    snapshot = snapshot_from_sample(sample, frame_id=11)
+    snapshot = update_snapshot_sam3(
+        snapshot,
+        prompt="plastic water bottle",
+        results=[{"mask": mask, "box": [1, 1, 2, 2], "score": 0.9}],
+    )
+
+    payload = build_frame_payload(snapshot)
+
+    grasp = payload["sam3"]["grasp"]
+    assert grasp["kind"] == "front_policy_pinch_center"
+    assert grasp["position_camera"] == pytest.approx([0.0, 0.0, 1.0])
+    assert grasp["position_world"] == pytest.approx([0.5, -0.2, 1.1])
+    assert grasp["quaternion_wxyz"] == pytest.approx([1.0, 0.0, 0.0, 0.0])
+    assert grasp["valid_depth_px"] == 1
 
 
 def test_web_viewer_builds_live_frame_payload_with_rgb_and_depth() -> None:

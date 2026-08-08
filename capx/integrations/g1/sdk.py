@@ -30,13 +30,34 @@ G1_RIGHT_ARM_JOINT_NAMES: tuple[str, ...] = (
 )
 
 G1_ARM_JOINT_NAMES: tuple[str, ...] = G1_RIGHT_ARM_JOINT_NAMES
-G1_ARM_MOTOR_INDICES: tuple[int, ...] = tuple(range(22, 29))
 G1_LOWCMD_CONTROLLED_MOTOR_INDICES: tuple[int, ...] = tuple(range(29))
 G1_NUM_ARM_JOINTS = 7
 G1_DUAL_ARM_NUM_JOINTS = 14
+G1_LEFT_ARM_MOTOR_INDICES: tuple[int, ...] = tuple(range(15, 22))
+G1_RIGHT_ARM_MOTOR_INDICES: tuple[int, ...] = tuple(range(22, 29))
+# Backward-compatible aliases for the original right-arm-only interface.
+G1_ARM_MOTOR_INDICES: tuple[int, ...] = G1_RIGHT_ARM_MOTOR_INDICES
+G1_ARM_JOINT_NAMES_BY_SIDE: dict[str, tuple[str, ...]] = {
+    "left": G1_LEFT_ARM_JOINT_NAMES,
+    "right": G1_RIGHT_ARM_JOINT_NAMES,
+}
+G1_ARM_MOTOR_INDICES_BY_SIDE: dict[str, tuple[int, ...]] = {
+    "left": G1_LEFT_ARM_MOTOR_INDICES,
+    "right": G1_RIGHT_ARM_MOTOR_INDICES,
+}
+G1_LEFT_ARM_DUAL_CFG_SLICE = slice(0, 7)
 G1_RIGHT_ARM_DUAL_CFG_SLICE = slice(7, 14)
+G1_ARM_DUAL_CFG_SLICE_BY_SIDE: dict[str, slice] = {
+    "left": G1_LEFT_ARM_DUAL_CFG_SLICE,
+    "right": G1_RIGHT_ARM_DUAL_CFG_SLICE,
+}
 G1_WITH_HAND_NUM_JOINTS = 43
+G1_LEFT_ARM_WITH_HAND_CFG_SLICE = slice(36, 43)
 G1_RIGHT_ARM_WITH_HAND_CFG_SLICE = slice(29, 36)
+G1_ARM_WITH_HAND_CFG_SLICE_BY_SIDE: dict[str, slice] = {
+    "left": G1_LEFT_ARM_WITH_HAND_CFG_SLICE,
+    "right": G1_RIGHT_ARM_WITH_HAND_CFG_SLICE,
+}
 DEFAULT_G1_NETWORK_INTERFACE = "enx6c1ff7c1192d"
 
 G1_LOWCMD_KP: tuple[float, ...] = (
@@ -104,7 +125,7 @@ G1_LOWCMD_KD: tuple[float, ...] = (
 DEFAULT_G1_ARM_KP = 40.0
 DEFAULT_G1_ARM_KD = 1.0
 
-G1_DEX3_HAND_JOINT_NAMES: tuple[str, ...] = (
+G1_RIGHT_DEX3_HAND_JOINT_NAMES: tuple[str, ...] = (
     "right_hand_thumb_0_joint",
     "right_hand_thumb_1_joint",
     "right_hand_thumb_2_joint",
@@ -113,7 +134,7 @@ G1_DEX3_HAND_JOINT_NAMES: tuple[str, ...] = (
     "right_hand_middle_0_joint",
     "right_hand_middle_1_joint",
 )
-G1_DEX3_DDS_HAND_JOINT_NAMES: tuple[str, ...] = (
+G1_RIGHT_DEX3_DDS_HAND_JOINT_NAMES: tuple[str, ...] = (
     "right_hand_thumb_0_joint",
     "right_hand_thumb_1_joint",
     "right_hand_thumb_2_joint",
@@ -122,68 +143,98 @@ G1_DEX3_DDS_HAND_JOINT_NAMES: tuple[str, ...] = (
     "right_hand_index_0_joint",
     "right_hand_index_1_joint",
 )
+G1_LEFT_DEX3_HAND_JOINT_NAMES: tuple[str, ...] = tuple(
+    name.replace("right_", "left_", 1) for name in G1_RIGHT_DEX3_HAND_JOINT_NAMES
+)
+G1_LEFT_DEX3_DDS_HAND_JOINT_NAMES: tuple[str, ...] = tuple(
+    name.replace("right_", "left_", 1) for name in G1_RIGHT_DEX3_DDS_HAND_JOINT_NAMES
+)
+# Backward-compatible aliases for the original right-hand-only interface.
+G1_DEX3_HAND_JOINT_NAMES: tuple[str, ...] = G1_RIGHT_DEX3_HAND_JOINT_NAMES
+G1_DEX3_DDS_HAND_JOINT_NAMES: tuple[str, ...] = G1_RIGHT_DEX3_DDS_HAND_JOINT_NAMES
+G1_DEX3_HAND_JOINT_NAMES_BY_SIDE: dict[str, tuple[str, ...]] = {
+    "left": G1_LEFT_DEX3_HAND_JOINT_NAMES,
+    "right": G1_RIGHT_DEX3_HAND_JOINT_NAMES,
+}
+G1_DEX3_DDS_HAND_JOINT_NAMES_BY_SIDE: dict[str, tuple[str, ...]] = {
+    "left": G1_LEFT_DEX3_DDS_HAND_JOINT_NAMES,
+    "right": G1_RIGHT_DEX3_DDS_HAND_JOINT_NAMES,
+}
 G1_NUM_DEX3_HAND_JOINTS = 7
 G1_DEX3_SEMANTIC_TO_DDS_INDICES: tuple[int, ...] = tuple(
-    G1_DEX3_HAND_JOINT_NAMES.index(name) for name in G1_DEX3_DDS_HAND_JOINT_NAMES
+    G1_RIGHT_DEX3_HAND_JOINT_NAMES.index(name) for name in G1_RIGHT_DEX3_DDS_HAND_JOINT_NAMES
 )
 G1_DEX3_DDS_TO_SEMANTIC_INDICES: tuple[int, ...] = tuple(
-    G1_DEX3_DDS_HAND_JOINT_NAMES.index(name) for name in G1_DEX3_HAND_JOINT_NAMES
+    G1_RIGHT_DEX3_DDS_HAND_JOINT_NAMES.index(name) for name in G1_RIGHT_DEX3_HAND_JOINT_NAMES
 )
 DEFAULT_G1_DEX3_HAND_KP = 1.5
 DEFAULT_G1_DEX3_HAND_KD = 0.1
 DEFAULT_G1_DEX3_RIGHT_CMD_TOPIC = "rt/dex3/right/cmd"
 DEFAULT_G1_DEX3_RIGHT_STATE_TOPIC = "rt/lf/dex3/right/state"
+DEFAULT_G1_DEX3_LEFT_CMD_TOPIC = "rt/dex3/left/cmd"
+DEFAULT_G1_DEX3_LEFT_STATE_TOPIC = "rt/dex3/left/state"
 
 
 class UnitreeSdkUnavailableError(RuntimeError):
     """Raised when the Unitree SDK2 Python package is not importable."""
 
 
-def as_g1_arm_joints(joints: Any) -> np.ndarray:
-    """Normalize a joint vector to CaP-X G1 right-arm single-arm order."""
+def normalize_g1_arm_side(side: str) -> str:
+    """Validate and normalize a single-arm G1 side selector."""
 
+    normalized = str(side).lower()
+    if normalized not in {"left", "right"}:
+        raise ValueError("G1 arm side must be left or right.")
+    return normalized
+
+
+def as_g1_arm_joints(joints: Any, *, arm_side: str = "right") -> np.ndarray:
+    """Normalize a joint vector to the selected CaP-X G1 arm order."""
+
+    side = normalize_g1_arm_side(arm_side)
     arr = np.asarray(joints, dtype=np.float64)
     if arr.size != G1_NUM_ARM_JOINTS:
         raise ValueError(
-            f"Expected {G1_NUM_ARM_JOINTS} G1 right arm joints in order "
-            f"{G1_ARM_JOINT_NAMES}, got shape {arr.shape}."
+            f"Expected {G1_NUM_ARM_JOINTS} G1 {side} arm joints in order "
+            f"{G1_ARM_JOINT_NAMES_BY_SIDE[side]}, got shape {arr.shape}."
         )
     return arr.reshape(G1_NUM_ARM_JOINTS)
 
 
-def as_g1_dex3_hand_joints(joints: Any) -> np.ndarray:
-    """Normalize Dex3 right-hand joints in CaP-X semantic order."""
+def as_g1_dex3_hand_joints(joints: Any, *, hand_side: str = "right") -> np.ndarray:
+    """Normalize Dex3 joints in the selected hand semantic order."""
 
+    side = normalize_g1_arm_side(hand_side)
     arr = np.asarray(joints, dtype=np.float64)
     if arr.size != G1_NUM_DEX3_HAND_JOINTS:
         raise ValueError(
-            f"Expected {G1_NUM_DEX3_HAND_JOINTS} Dex3 right hand joints in order "
-            f"{G1_DEX3_HAND_JOINT_NAMES}, got shape {arr.shape}."
+            f"Expected {G1_NUM_DEX3_HAND_JOINTS} Dex3 {side} hand joints in order "
+            f"{G1_DEX3_HAND_JOINT_NAMES_BY_SIDE[side]}, got shape {arr.shape}."
         )
     return arr.reshape(G1_NUM_DEX3_HAND_JOINTS)
 
 
-def dex3_semantic_to_dds_joints(joints: Any) -> np.ndarray:
-    target = as_g1_dex3_hand_joints(joints)
+def dex3_semantic_to_dds_joints(joints: Any, *, hand_side: str = "right") -> np.ndarray:
+    target = as_g1_dex3_hand_joints(joints, hand_side=hand_side)
     return target[np.asarray(G1_DEX3_SEMANTIC_TO_DDS_INDICES, dtype=np.int64)]
 
 
-def dex3_dds_to_semantic_joints(joints: Any) -> np.ndarray:
+def dex3_dds_to_semantic_joints(joints: Any, *, hand_side: str = "right") -> np.ndarray:
+    side = normalize_g1_arm_side(hand_side)
     arr = np.asarray(joints, dtype=np.float64)
     if arr.size != G1_NUM_DEX3_HAND_JOINTS:
         raise ValueError(
-            f"Expected {G1_NUM_DEX3_HAND_JOINTS} Dex3 DDS joints in order "
-            f"{G1_DEX3_DDS_HAND_JOINT_NAMES}, got shape {arr.shape}."
+            f"Expected {G1_NUM_DEX3_HAND_JOINTS} Dex3 {side} DDS joints in order "
+            f"{G1_DEX3_DDS_HAND_JOINT_NAMES_BY_SIDE[side]}, got shape {arr.shape}."
         )
     return arr.reshape(G1_NUM_DEX3_HAND_JOINTS)[np.asarray(G1_DEX3_DDS_TO_SEMANTIC_INDICES, dtype=np.int64)]
 
 
-def dex3_grasp_joints(trigger: float, squeeze: float) -> np.ndarray:
-    """Map IsaacLab G1 TriHand controller inputs to right-hand Dex3 joints.
+def dex3_grasp_joints(trigger: float, squeeze: float, *, hand_side: str = "right") -> np.ndarray:
+    """Map IsaacLab-style trigger/squeeze inputs to a selected Dex3 hand.
 
-    trigger closes index+thumb for a 2D pinch. squeeze closes
-    middle+thumb. Pressing both yields a three-finger grasp. Output is in
-    CaP-X semantic order G1_DEX3_HAND_JOINT_NAMES.
+    The left hand mirrors the right hand flexion directions according to the G1
+    URDF joint limits while retaining the same trigger/squeeze semantics.
     """
 
     trigger_f = float(np.clip(trigger, 0.0, 1.0))
@@ -191,8 +242,7 @@ def dex3_grasp_joints(trigger: float, squeeze: float) -> np.ndarray:
     thumb_button = max(trigger_f, squeeze_f)
     thumb_angle = -thumb_button
     thumb_rotation = -(0.5 * trigger_f - 0.5 * squeeze_f)
-
-    return np.asarray(
+    right_target = np.asarray(
         [
             thumb_rotation,
             thumb_angle * 0.4,
@@ -204,10 +254,13 @@ def dex3_grasp_joints(trigger: float, squeeze: float) -> np.ndarray:
         ],
         dtype=np.float64,
     )
+    if normalize_g1_arm_side(hand_side) == "right":
+        return right_target
+    return right_target * np.asarray([1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0])
 
 
 class G1ArmSdkBridge:
-    """Bridge from CaP-X 7-DoF right-arm commands to Unitree G1 lowcmd DDS messages."""
+    """Bridge from CaP-X 7-DoF single-arm commands to Unitree G1 lowcmd DDS messages."""
 
     def __init__(
         self,
@@ -215,6 +268,7 @@ class G1ArmSdkBridge:
         network_interface: str | None = None,
         domain_id: int = 0,
         dry_run: bool = False,
+        arm_side: str = "right",
         publisher_topic: str = "rt/lowcmd",
         state_topic: str = "rt/lowstate",
         release_motion_mode: bool = True,
@@ -233,6 +287,8 @@ class G1ArmSdkBridge:
             or DEFAULT_G1_NETWORK_INTERFACE
         )
         self.domain_id = int(domain_id)
+        self.arm_side = normalize_g1_arm_side(arm_side)
+        self.arm_motor_indices = G1_ARM_MOTOR_INDICES_BY_SIDE[self.arm_side]
         self.dry_run = bool(dry_run)
         self.publisher_topic = publisher_topic
         self.state_topic = state_topic
@@ -365,7 +421,7 @@ class G1ArmSdkBridge:
             self._mode_machine = int(getattr(msg, "mode_machine", 0))
             try:
                 self._last_observed_joints = np.asarray(
-                    [msg.motor_state[i].q for i in G1_ARM_MOTOR_INDICES],
+                    [msg.motor_state[i].q for i in self.arm_motor_indices],
                     dtype=np.float64,
                 )
                 self._last_observed_all_joints = np.asarray(
@@ -390,9 +446,9 @@ class G1ArmSdkBridge:
         return self.has_low_state
 
     def build_low_cmd(self, joints: Any) -> Any:
-        """Build a Unitree ``LowCmd_`` for the 7-DoF G1 right arm target."""
+        """Build a Unitree ``LowCmd_`` for the selected 7-DoF G1 arm target."""
 
-        target = as_g1_arm_joints(joints)
+        target = as_g1_arm_joints(joints, arm_side=self.arm_side)
         cmd = self._make_low_cmd()
         if len(cmd.motor_cmd) <= max(G1_LOWCMD_CONTROLLED_MOTOR_INDICES):
             raise ValueError(
@@ -411,7 +467,7 @@ class G1ArmSdkBridge:
         if not self.dry_run and state is None:
             raise RuntimeError(
                 "Cannot publish G1 lowcmd before receiving rt/lowstate; "
-                "non-right-arm joints must be preserved from the robot state."
+                "non-selected-arm joints must be preserved from the robot state."
             )
 
         for motor_idx in G1_LOWCMD_CONTROLLED_MOTOR_INDICES:
@@ -424,7 +480,7 @@ class G1ArmSdkBridge:
             motor.kd = float(G1_LOWCMD_KD[motor_idx])
             motor.tau = self.tau
 
-        for value, motor_idx in zip(target, G1_ARM_MOTOR_INDICES, strict=True):
+        for value, motor_idx in zip(target, self.arm_motor_indices, strict=True):
             motor = cmd.motor_cmd[motor_idx]
             motor.q = float(value)
             motor.dq = self.dq
@@ -440,7 +496,7 @@ class G1ArmSdkBridge:
     def publish_joints(self, joints: Any) -> bool:
         """Publish a G1 arm joint target, or only store it when ``dry_run`` is true."""
 
-        target = as_g1_arm_joints(joints)
+        target = as_g1_arm_joints(joints, arm_side=self.arm_side)
         if not self.dry_run and not self._connected:
             self.connect()
 
@@ -458,7 +514,7 @@ class G1ArmSdkBridge:
         return bool(self._publisher.Write(cmd, self.write_timeout))
 
     def get_arm_joint_positions(self) -> np.ndarray:
-        """Return latest G1 right-arm joint positions in CaP-X 7-DoF order."""
+        """Return latest selected G1 arm joint positions in CaP-X 7-DoF order."""
 
         with self._lock:
             state = self._latest_state
@@ -473,7 +529,7 @@ class G1ArmSdkBridge:
 
         try:
             return np.asarray(
-                [state.motor_state[i].q for i in G1_ARM_MOTOR_INDICES],
+                [state.motor_state[i].q for i in self.arm_motor_indices],
                 dtype=np.float64,
             )
         except (AttributeError, IndexError) as exc:
@@ -490,7 +546,7 @@ class G1ArmSdkBridge:
 
 
 class G1Dex3HandBridge:
-    """Bridge from CaP-X right-hand semantic commands to Unitree Dex3 DDS messages."""
+    """Bridge from CaP-X semantic hand commands to either Unitree G1 Dex3 hand."""
 
     def __init__(
         self,
@@ -508,9 +564,7 @@ class G1Dex3HandBridge:
         write_timeout: float | None = None,
         hand_cmd_factory: Callable[[], Any] | None = None,
     ) -> None:
-        side = hand_side.lower()
-        if side != "right":
-            raise ValueError("Only the G1 right Dex3 hand is supported by this single-arm API.")
+        side = normalize_g1_arm_side(hand_side)
 
         self.network_interface = (
             network_interface
@@ -521,8 +575,12 @@ class G1Dex3HandBridge:
         self.domain_id = int(domain_id)
         self.dry_run = bool(dry_run)
         self.hand_side = side
-        self.publisher_topic = publisher_topic or DEFAULT_G1_DEX3_RIGHT_CMD_TOPIC
-        self.state_topic = state_topic or DEFAULT_G1_DEX3_RIGHT_STATE_TOPIC
+        self.publisher_topic = publisher_topic or (
+            DEFAULT_G1_DEX3_LEFT_CMD_TOPIC if side == "left" else DEFAULT_G1_DEX3_RIGHT_CMD_TOPIC
+        )
+        self.state_topic = state_topic or (
+            DEFAULT_G1_DEX3_LEFT_STATE_TOPIC if side == "left" else DEFAULT_G1_DEX3_RIGHT_STATE_TOPIC
+        )
         self.kp = float(kp)
         self.kd = float(kd)
         self.dq = float(dq)
@@ -594,7 +652,7 @@ class G1Dex3HandBridge:
             raise RuntimeError("Unitree DDS channel object has neither Init nor InitChannel.")
 
     def connect(self) -> None:
-        """Initialize DDS publisher/subscriber for the right Dex3 hand."""
+        """Initialize DDS publisher/subscriber for the selected Dex3 hand."""
 
         if self.dry_run or self._connected:
             return
@@ -617,7 +675,7 @@ class G1Dex3HandBridge:
                     [msg.motor_state[i].q for i in range(G1_NUM_DEX3_HAND_JOINTS)],
                     dtype=np.float64,
                 )
-                self._last_observed_joints = dex3_dds_to_semantic_joints(dds_joints)
+                self._last_observed_joints = dex3_dds_to_semantic_joints(dds_joints, hand_side=self.hand_side)
             except (AttributeError, IndexError):
                 pass
 
@@ -641,10 +699,10 @@ class G1Dex3HandBridge:
         return (motor_id & 0x0F) | ((status & 0x07) << 4) | ((0x01 if timeout else 0x00) << 7)
 
     def build_hand_cmd(self, joints: Any) -> Any:
-        """Build a Unitree HandCmd_ for a right Dex3 hand target."""
+        """Build a Unitree HandCmd_ for the selected Dex3 hand target."""
 
-        target = as_g1_dex3_hand_joints(joints)
-        dds_target = dex3_semantic_to_dds_joints(target)
+        target = as_g1_dex3_hand_joints(joints, hand_side=self.hand_side)
+        dds_target = dex3_semantic_to_dds_joints(target, hand_side=self.hand_side)
         cmd = self._make_hand_cmd()
         if len(cmd.motor_cmd) < G1_NUM_DEX3_HAND_JOINTS:
             raise ValueError(
@@ -666,7 +724,7 @@ class G1Dex3HandBridge:
     def publish_hand_joints(self, joints: Any) -> bool:
         """Publish a Dex3 hand target in CaP-X semantic order."""
 
-        target = as_g1_dex3_hand_joints(joints)
+        target = as_g1_dex3_hand_joints(joints, hand_side=self.hand_side)
         if not self.dry_run and not self._connected:
             self.connect()
 
@@ -684,7 +742,7 @@ class G1Dex3HandBridge:
         return bool(self._publisher.Write(cmd, self.write_timeout))
 
     def get_hand_joint_positions(self) -> np.ndarray:
-        """Return latest right Dex3 hand joints in CaP-X semantic order."""
+        """Return latest selected Dex3 hand joints in CaP-X semantic order."""
 
         with self._lock:
             if self.dry_run:

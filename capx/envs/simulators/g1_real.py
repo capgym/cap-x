@@ -17,6 +17,7 @@ from capx.integrations.g1.sdk import (
     as_g1_arm_joints,
     as_g1_dex3_hand_joints,
     dex3_grasp_joints,
+    normalize_g1_arm_side,
 )
 from capx.utils.camera_utils import obs_get_rgb
 from capx.utils.msgpack_server_client_utils import MsgpackNumpyServer
@@ -51,7 +52,7 @@ def _start_msgpack_server_in_background(server: MsgpackNumpyServer) -> tuple[asy
 
 
 class G1RealLowLevel(BaseEnv):
-    """Real Unitree G1 right-arm low-level env for CaP-X code execution."""
+    """Real Unitree G1 single-arm low-level env for CaP-X code execution."""
 
     def __init__(
         self,
@@ -65,6 +66,7 @@ class G1RealLowLevel(BaseEnv):
         dry_run: bool | None = None,
         network_interface: str | None = None,
         domain_id: int = 0,
+        arm_side: str = "right",
         enable_dex3: bool = False,
         dex3_hand_side: str = "right",
         dex3_hand_cmd_topic: str | None = None,
@@ -87,6 +89,8 @@ class G1RealLowLevel(BaseEnv):
     ) -> None:
         super().__init__()
         self.seed_value = seed
+        self.arm_side = normalize_g1_arm_side(arm_side)
+        self.dex3_hand_side = normalize_g1_arm_side(dex3_hand_side)
         self.privileged = privileged
         self.enable_render = enable_render
         self.viser_debug = viser_debug
@@ -107,12 +111,17 @@ class G1RealLowLevel(BaseEnv):
         self._arm_hold_lock = threading.Lock()
         self._arm_hold_last_error: str | None = None
         self._pregrasp_side_joints = (
-            None if pregrasp_side_joints is None else as_g1_arm_joints(pregrasp_side_joints).copy()
+            None if pregrasp_side_joints is None else as_g1_arm_joints(pregrasp_side_joints, arm_side=self.arm_side).copy()
         )
         self._pregrasp_side_before_first_pose = bool(pregrasp_side_before_first_pose)
         self._pregrasp_side_done = False
         self._gripper_fraction = 1.0
         self._enable_dex3 = bool(enable_dex3 or hand_bridge is not None)
+        if self._enable_dex3 and self.dex3_hand_side != self.arm_side:
+            raise ValueError(
+                "The configured Dex3 hand must match the configured G1 arm side "
+                "for a single-arm environment."
+            )
         self._current_hand_joints = np.zeros(G1_NUM_DEX3_HAND_JOINTS, dtype=np.float64)
         self._record_frames = False
         self._frame_buffer: list[np.ndarray] = []
@@ -135,27 +144,43 @@ class G1RealLowLevel(BaseEnv):
         if default_joint_positions is None:
             self._current_joints = np.zeros(G1_NUM_ARM_JOINTS, dtype=np.float64)
         else:
-            self._current_joints = as_g1_arm_joints(default_joint_positions).copy()
+            self._current_joints = as_g1_arm_joints(default_joint_positions, arm_side=self.arm_side).copy()
 
         self.sdk_bridge = sdk_bridge or G1ArmSdkBridge(
             network_interface=network_interface,
             domain_id=domain_id,
             dry_run=self.dry_run,
+            arm_side=self.arm_side,
             write_timeout=write_timeout,
         )
+        bridge_arm_side = getattr(self.sdk_bridge, "arm_side", self.arm_side)
+        if normalize_g1_arm_side(bridge_arm_side) != self.arm_side:
+            raise ValueError(
+                f"G1 arm bridge side={bridge_arm_side} does not match env arm_side={self.arm_side}."
+            )
+        if hasattr(self.sdk_bridge, "dry_run"):
+            self.sdk_bridge.dry_run = self.dry_run
         self.hand_bridge = hand_bridge
         if self._enable_dex3 and self.hand_bridge is None:
             self.hand_bridge = G1Dex3HandBridge(
                 network_interface=network_interface,
                 domain_id=domain_id,
                 dry_run=self.dry_run,
-                hand_side=dex3_hand_side,
+                hand_side=self.dex3_hand_side,
                 publisher_topic=dex3_hand_cmd_topic,
                 state_topic=dex3_hand_state_topic,
                 write_timeout=write_timeout,
             )
+        if self.hand_bridge is not None:
+            bridge_hand_side = getattr(self.hand_bridge, "hand_side", self.dex3_hand_side)
+            if normalize_g1_arm_side(bridge_hand_side) != self.dex3_hand_side:
+                raise ValueError(
+                    f"Dex3 hand bridge side={bridge_hand_side} does not match env hand side={self.dex3_hand_side}."
+                )
+        if self.hand_bridge is not None and hasattr(self.hand_bridge, "dry_run"):
+            self.hand_bridge.dry_run = self.dry_run
         print(
-            f"[g1-real] dry_run={self.dry_run} "
+            f"[g1-real] arm_side={self.arm_side} dry_run={self.dry_run} "
             f"network_interface={getattr(self.sdk_bridge, 'network_interface', '<custom>')}"
         )
         if not self.dry_run:
@@ -284,9 +309,10 @@ class G1RealLowLevel(BaseEnv):
     def _publish_joints_or_raise(self, target: np.ndarray) -> None:
         ok = self.sdk_bridge.publish_joints(target)
         if ok is False:
+            topic = getattr(self.sdk_bridge, "publisher_topic", "rt/lowcmd")
             raise RuntimeError(
-                "rt/lowcmd publish failed. Check that the G1 is in debug/low-level mode, "
-                "the network interface is correct, and a robot DDS subscriber is matched."
+                f"{topic} publish failed. Check that the G1 bridge/controller is running, "
+                "the network interface is correct, and a robot subscriber is matched."
             )
 
     def _ensure_arm_hold_thread(self) -> None:
@@ -313,7 +339,7 @@ class G1RealLowLevel(BaseEnv):
     def _set_arm_hold_target(self, target: np.ndarray, *, publish_now: bool = True) -> None:
         if self.dry_run or not self._hold_arm_after_move:
             return
-        target_arr = as_g1_arm_joints(target).copy()
+        target_arr = as_g1_arm_joints(target, arm_side=self.arm_side).copy()
         with self._arm_hold_lock:
             self._arm_hold_target = target_arr
             self._arm_hold_last_error = None
@@ -330,7 +356,7 @@ class G1RealLowLevel(BaseEnv):
     def _publish_arm_hold_once(self, target: np.ndarray) -> None:
         if self.dry_run or not self._hold_arm_after_move:
             return
-        target_arr = as_g1_arm_joints(target).copy()
+        target_arr = as_g1_arm_joints(target, arm_side=self.arm_side).copy()
         self._publish_joints_or_raise(target_arr)
         self._publish_action_metadata(target_arr)
 
@@ -352,7 +378,8 @@ class G1RealLowLevel(BaseEnv):
             try:
                 ok = self.sdk_bridge.publish_joints(target)
                 if ok is False:
-                    message = "rt/lowcmd hold publish failed"
+                    topic = getattr(self.sdk_bridge, "publisher_topic", "rt/lowcmd")
+                    message = f"{topic} hold publish failed"
                     with self._arm_hold_lock:
                         if self._arm_hold_last_error != message:
                             print(f"[g1-real] {message}")
@@ -386,7 +413,7 @@ class G1RealLowLevel(BaseEnv):
         return self.obs.copy(), {}
 
     def move_to_pregrasp_side_pose_once(self, *, force: bool = False) -> bool:
-        """Move the right arm to a configured side-lift waypoint before Cartesian grasping."""
+        """Move the configured arm to a side-lift waypoint before Cartesian grasping."""
 
         if self._pregrasp_side_joints is None:
             return False
@@ -420,7 +447,7 @@ class G1RealLowLevel(BaseEnv):
         tolerance: float = 0.05,
         max_steps: int = 350,
     ) -> None:
-        target = as_g1_arm_joints(joints).copy()
+        target = as_g1_arm_joints(joints, arm_side=self.arm_side).copy()
         target_str = np.array2string(target, precision=4, suppress_small=True)
         print(f"[g1-real] move_to_joints target={target_str} dry_run={self.dry_run}")
 
@@ -433,8 +460,9 @@ class G1RealLowLevel(BaseEnv):
 
         wait_for_low_state = getattr(self.sdk_bridge, "wait_for_low_state", None)
         if callable(wait_for_low_state) and not wait_for_low_state(timeout_s=3.0):
+            state_topic = getattr(self.sdk_bridge, "state_topic", "rt/lowstate")
             raise RuntimeError(
-                "Did not receive G1 rt/lowstate within 3 seconds; refusing to report motion complete."
+                f"Did not receive G1 {state_topic} within 3 seconds; refusing to report motion complete."
             )
 
         self._update_from_network()
@@ -537,10 +565,10 @@ class G1RealLowLevel(BaseEnv):
         max_joint_step: float | None = None,
         hold_final_seconds: float = 0.0,
     ) -> None:
-        """Stream a precomputed right-arm joint trajectory without per-waypoint blocking.
+        """Stream a precomputed single-arm joint trajectory without per-waypoint blocking.
 
         Args:
-            trajectory: Array-like shape (N, 7), in G1 right-arm joint order.
+            trajectory: Array-like shape (N, 7), in the configured G1 arm joint order.
             dt: Optional publish period in seconds. If None, uses the environment
                 action publish period.
             max_joint_step: Optional maximum absolute joint delta per published
@@ -588,8 +616,9 @@ class G1RealLowLevel(BaseEnv):
 
         wait_for_low_state = getattr(self.sdk_bridge, "wait_for_low_state", None)
         if callable(wait_for_low_state) and not wait_for_low_state(timeout_s=3.0):
+            state_topic = getattr(self.sdk_bridge, "state_topic", "rt/lowstate")
             raise RuntimeError(
-                "Did not receive G1 rt/lowstate within 3 seconds; refusing to stream trajectory."
+                f"Did not receive G1 {state_topic} within 3 seconds; refusing to stream trajectory."
             )
 
         completed = False
@@ -616,8 +645,10 @@ class G1RealLowLevel(BaseEnv):
         max_steps: int = 350,
     ) -> None:
         arm_key = arm.lower()
-        if arm_key not in {"right", "single", "arm"}:
-            raise ValueError("Only the G1 right arm is supported by this single-arm env.")
+        if arm_key not in {self.arm_side, "single", "arm"}:
+            raise ValueError(
+                f"This single-arm environment controls only the G1 {self.arm_side} arm."
+            )
         self.move_to_joints_blocking(joints, tolerance=tolerance, max_steps=max_steps)
 
     def get_current_arm_joints(self) -> np.ndarray:
@@ -626,7 +657,7 @@ class G1RealLowLevel(BaseEnv):
         return self._current_joints.copy()
 
     def move_hand_to_joints_blocking(self, joints: Any) -> None:
-        target = as_g1_dex3_hand_joints(joints).copy()
+        target = as_g1_dex3_hand_joints(joints, hand_side=self.dex3_hand_side).copy()
         target_str = np.array2string(target, precision=4, suppress_small=True)
         print(f"[g1-real] move_hand target={target_str} dry_run={self.dry_run}")
 
@@ -648,7 +679,7 @@ class G1RealLowLevel(BaseEnv):
         ok = self.hand_bridge.publish_hand_joints(target)
         if ok is False:
             raise RuntimeError(
-                "Dex3 hand publish failed. Check the right-hand DDS topic, network interface, "
+                "Dex3 hand publish failed. Check the configured-hand DDS topic, network interface, "
                 "and that the hand controller is running."
             )
         self._current_hand_joints = target.copy()
@@ -659,15 +690,15 @@ class G1RealLowLevel(BaseEnv):
 
     def open_dex3_hand(self) -> None:
         self._gripper_fraction = 1.0
-        self.move_hand_to_joints_blocking(dex3_grasp_joints(trigger=0.0, squeeze=0.0))
+        self.move_hand_to_joints_blocking(dex3_grasp_joints(trigger=0.0, squeeze=0.0, hand_side=self.dex3_hand_side))
 
     def close_dex3_hand(self) -> None:
         self._gripper_fraction = 0.0
-        self.move_hand_to_joints_blocking(dex3_grasp_joints(trigger=1.0, squeeze=1.0))
+        self.move_hand_to_joints_blocking(dex3_grasp_joints(trigger=1.0, squeeze=1.0, hand_side=self.dex3_hand_side))
 
     def close_dex3_index_pinch(self) -> None:
         self._gripper_fraction = 0.0
-        self.move_hand_to_joints_blocking(dex3_grasp_joints(trigger=1.0, squeeze=0.0))
+        self.move_hand_to_joints_blocking(dex3_grasp_joints(trigger=1.0, squeeze=0.0, hand_side=self.dex3_hand_side))
 
     def _set_gripper(self, fraction: float) -> None:
         self._gripper_fraction = float(np.clip(fraction, 0.0, 1.0))

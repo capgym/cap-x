@@ -1,6 +1,12 @@
+from .control import G1LeftRealControlApi, G1RealControlApi
+from .gateway import G1GatewayArmActionBridge
 from .sdk import (
     DEFAULT_G1_NETWORK_INTERFACE,
     G1_ARM_JOINT_NAMES,
+    G1_LEFT_ARM_DUAL_CFG_SLICE,
+    G1_LEFT_ARM_MOTOR_INDICES,
+    G1_RIGHT_ARM_DUAL_CFG_SLICE,
+    G1_RIGHT_ARM_MOTOR_INDICES,
     G1_ARM_MOTOR_INDICES,
     G1_LOWCMD_CONTROLLED_MOTOR_INDICES,
     G1_NUM_ARM_JOINTS,
@@ -11,8 +17,15 @@ from .sdk import (
 
 __all__ = [
     "G1ArmSdkBridge",
+    "G1RealControlApi",
+    "G1LeftRealControlApi",
+    "G1GatewayArmActionBridge",
     "DEFAULT_G1_NETWORK_INTERFACE",
     "G1_ARM_JOINT_NAMES",
+    "G1_LEFT_ARM_DUAL_CFG_SLICE",
+    "G1_LEFT_ARM_MOTOR_INDICES",
+    "G1_RIGHT_ARM_DUAL_CFG_SLICE",
+    "G1_RIGHT_ARM_MOTOR_INDICES",
     "G1_ARM_MOTOR_INDICES",
     "G1_LOWCMD_CONTROLLED_MOTOR_INDICES",
     "G1_NUM_ARM_JOINTS",

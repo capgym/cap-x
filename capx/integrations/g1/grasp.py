@@ -9,7 +9,7 @@ import xml.etree.ElementTree as ET
 import numpy as np
 from scipy.spatial.transform import Rotation as SciRotation
 
-from capx.integrations.g1.sdk import dex3_grasp_joints
+from capx.integrations.g1.sdk import dex3_grasp_joints, normalize_g1_arm_side
 
 
 DEFAULT_G1_WITH_HAND_URDF = Path(__file__).resolve().parents[3] / "env_configs/g1/g1_29dof_with_hand.urdf"
@@ -39,9 +39,9 @@ def closed_pinch_center_offset(
     """Return the closed Dex3 pinch center offset in a G1 hand link frame.
 
     Args:
-        hand: Only "right" is supported by the current CaP-X G1 real API.
-        link_frame: The local frame for the returned offset. The G1 PyRoKi server
-            currently targets "right_hand_palm_link", so that is the default.
+        hand: "left" or "right", selecting the Dex3 geometry used for the pinch center.
+        link_frame: The local frame for the returned offset. It must match the PyRoKi target link
+            selected for this arm.
         urdf_path: G1 URDF with Dex3 hand joints and links.
 
     Returns:
@@ -50,7 +50,7 @@ def closed_pinch_center_offset(
         visual grasp center when the hand closes.
     """
 
-    hand_key = _normalized_right_hand(hand)
+    hand_key = _normalized_g1_hand(hand)
     return np.asarray(
         _cached_closed_pinch_center_offset(hand_key, str(link_frame), str(Path(urdf_path))),
         dtype=np.float64,
@@ -84,20 +84,20 @@ def palm_pose_from_pinch_center_pose(
     pinch_center_offset: np.ndarray | None = None,
     urdf_path: str | Path = DEFAULT_G1_WITH_HAND_URDF,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Convert a desired closed pinch-center pose into a right palm-link pose.
+    """Convert a desired closed pinch-center pose into a palm-link pose.
 
     Args:
         position: Desired closed Dex3 pinch center XYZ in the robot/world frame.
         quaternion_wxyz: Desired pinch-center orientation in WXYZ order. If None,
             identity orientation is used.
-        pinch_center_offset: Optional (3,) right_hand_palm_link-local offset from
+        pinch_center_offset: Optional (3,) palm-link-local offset from
             palm to closed pinch center. Tests can inject this; real code uses URDF.
         urdf_path: URDF used to compute the closed pinch-center offset when the
             offset is not provided.
 
     Returns:
         palm_position, palm_quaternion_wxyz: pose to send to PyRoKi for
-        right_hand_palm_link so the closed pinch center lands at position.
+        palm-link frame so the closed pinch center lands at position.
     """
 
     offset = (
@@ -261,14 +261,11 @@ def _identity_quat_if_none(quaternion_wxyz: np.ndarray | None) -> np.ndarray:
         raise ValueError("Quaternion norm must be non-zero.")
     return quat / norm
 
-def _normalized_right_hand(hand: str) -> str:
-    hand_key = str(hand).lower()
-    if hand_key != "right":
-        raise ValueError("The CaP-X G1 real API currently controls only the right Dex3 hand.")
-    return hand_key
+def _normalized_g1_hand(hand: str) -> str:
+    return normalize_g1_arm_side(hand)
 
 def _closed_joint_values(hand: str) -> dict[str, float]:
-    values = dex3_grasp_joints(trigger=1.0, squeeze=1.0)
+    values = dex3_grasp_joints(trigger=1.0, squeeze=1.0, hand_side=hand)
     return {
         f"{hand}_hand_thumb_0_joint": float(values[0]),
         f"{hand}_hand_thumb_1_joint": float(values[1]),

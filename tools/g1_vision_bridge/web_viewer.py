@@ -40,11 +40,14 @@ class FrameSnapshot:
     rgb: np.ndarray
     depth_m: np.ndarray | None
     depth_image: np.ndarray | None
+    intrinsics: np.ndarray | None = None
+    pose_mat: np.ndarray | None = None
     sam3_prompt: str | None = None
     sam3_received_time: float | None = None
     sam3_result_count: int = 0
     sam3_best_score: float | None = None
     sam3_overlay_rgb: np.ndarray | None = None
+    sam3_grasp: dict[str, Any] | None = None
     sam3_error: str | None = None
 
 
@@ -56,10 +59,20 @@ class Sam3Snapshot:
     result_count: int
     best_score: float | None
     overlay_rgb: np.ndarray | None
+    grasp: dict[str, Any] | None = None
     error: str | None = None
 
 
+@dataclass(frozen=True)
+class ViewerActionRequest:
+    request_id: int
+    requested_time: float
+    after_frame_id: int
+
+
 def snapshot_from_sample(sample: Any, *, frame_id: int, received_time: float | None = None) -> FrameSnapshot:
+    intrinsics = getattr(sample, "intrinsics", None)
+    pose_mat = getattr(sample, "pose_mat", None)
     return FrameSnapshot(
         frame_id=int(frame_id),
         received_time=float(time.time() if received_time is None else received_time),
@@ -73,6 +86,8 @@ def snapshot_from_sample(sample: Any, *, frame_id: int, received_time: float | N
         depth_image=None
         if getattr(sample, "depth_image", None) is None
         else np.asarray(getattr(sample, "depth_image")).copy(),
+        intrinsics=None if intrinsics is None else np.asarray(intrinsics, dtype=np.float64).reshape(3, 3).copy(),
+        pose_mat=None if pose_mat is None else np.asarray(pose_mat, dtype=np.float64).reshape(4, 4).copy(),
     )
 
 
@@ -94,6 +109,68 @@ def _sam3_result_summary(results: list[dict[str, Any]]) -> tuple[int, float | No
         return 0, None
     scores = [float(result.get("score", 0.0)) for result in results]
     return len(results), max(scores) if scores else None
+
+
+def _best_sam3_result(results: list[dict[str, Any]]) -> dict[str, Any] | None:
+    if not results:
+        return None
+    return max(results, key=lambda item: float(item.get("score", 0.0)))
+
+
+def _front_policy_quaternion_wxyz() -> list[float]:
+    try:
+        from capx.integrations.g1.grasp import FRONT_POLICY_QUATERNION_WXYZ
+
+        return np.asarray(FRONT_POLICY_QUATERNION_WXYZ, dtype=np.float64).reshape(4).tolist()
+    except Exception:
+        return [1.0, 0.0, 0.0, 0.0]
+
+
+def compute_grasp_point_from_sam3(
+    snapshot: FrameSnapshot,
+    results: list[dict[str, Any]],
+    *,
+    depth_clip_range: tuple[float, float] = (0.015, 20.0),
+) -> dict[str, Any] | None:
+    best = _best_sam3_result(results)
+    if best is None or snapshot.depth_m is None or snapshot.intrinsics is None or snapshot.pose_mat is None:
+        return None
+
+    depth = np.asarray(snapshot.depth_m, dtype=np.float32)
+    if depth.ndim == 3 and depth.shape[2] == 1:
+        depth = depth[:, :, 0]
+    mask = np.asarray(best.get("mask"), dtype=bool)
+    if depth.ndim != 2 or mask.shape != depth.shape:
+        return None
+
+    near, far = depth_clip_range
+    valid = mask & np.isfinite(depth) & (depth >= float(near)) & (depth <= float(far))
+    if not np.any(valid):
+        return None
+
+    ys, xs = np.where(valid)
+    z = depth[ys, xs].astype(np.float64)
+    k = np.asarray(snapshot.intrinsics, dtype=np.float64).reshape(3, 3)
+    points_cam = np.stack(
+        [
+            (xs.astype(np.float64) - k[0, 2]) * z / k[0, 0],
+            (ys.astype(np.float64) - k[1, 2]) * z / k[1, 1],
+            z,
+        ],
+        axis=1,
+    )
+    center_cam = np.median(points_cam, axis=0)
+    t_world_camera = np.asarray(snapshot.pose_mat, dtype=np.float64).reshape(4, 4)
+    center_world = t_world_camera[:3, :3] @ center_cam + t_world_camera[:3, 3]
+    return {
+        "kind": "front_policy_pinch_center",
+        "position_world": center_world.astype(float).tolist(),
+        "position_camera": center_cam.astype(float).tolist(),
+        "quaternion_wxyz": _front_policy_quaternion_wxyz(),
+        "valid_depth_px": int(points_cam.shape[0]),
+        "mask_area_px": int(np.count_nonzero(mask)),
+        "source": "viewer_sam3_best_mask_median_depth",
+    }
 
 
 def build_sam3_overlay(rgb: np.ndarray, results: list[dict[str, Any]], *, max_masks: int = 5) -> np.ndarray:
@@ -162,6 +239,7 @@ def update_snapshot_sam3(
         sam3_result_count=result_count,
         sam3_best_score=best_score,
         sam3_overlay_rgb=None if overlay_rgb is None else np.asarray(overlay_rgb, dtype=np.uint8).copy(),
+        sam3_grasp=compute_grasp_point_from_sam3(snapshot, results),
         sam3_error=error,
     )
 
@@ -175,6 +253,7 @@ def _sam3_payload(snapshot: FrameSnapshot | None, sam3_snapshot: Sam3Snapshot | 
             "prompt": sam3_snapshot.prompt,
             "result_count": sam3_snapshot.result_count,
             "best_score": sam3_snapshot.best_score,
+            "grasp": sam3_snapshot.grasp,
             "error": sam3_snapshot.error,
             "overlay_data_url": None,
         }
@@ -191,6 +270,7 @@ def _sam3_payload(snapshot: FrameSnapshot | None, sam3_snapshot: Sam3Snapshot | 
         "prompt": snapshot.sam3_prompt,
         "result_count": snapshot.sam3_result_count,
         "best_score": snapshot.sam3_best_score,
+        "grasp": snapshot.sam3_grasp,
         "error": snapshot.sam3_error,
         "overlay_data_url": None,
     }
@@ -272,6 +352,11 @@ _INDEX_HTML = """<!doctype html>
     header { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
     h1 { font-size: 18px; margin: 0; font-weight: 650; }
     #status { font-size: 13px; color: #9ad; }
+    .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+    button { background: #2b5cff; color: #fff; border: 1px solid #6f91ff; border-radius: 6px; padding: 7px 10px; font-size: 13px; cursor: pointer; }
+    button:disabled { opacity: 0.5; cursor: default; }
+    kbd { border: 1px solid #555; border-bottom-color: #777; border-radius: 4px; padding: 1px 5px; background: #222; font-size: 12px; }
+    #action-status { color: #bbb; font-size: 13px; }
     .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
     .panel { background: #1b1b1b; border: 1px solid #333; border-radius: 6px; overflow: hidden; min-width: 0; }
     .panel h2 { font-size: 14px; margin: 0; padding: 8px 10px; background: #242424; border-bottom: 1px solid #333; }
@@ -285,6 +370,10 @@ _INDEX_HTML = """<!doctype html>
     <h1>G1 RGB-D Bridge Viewer</h1>
     <div id="status">waiting for frames</div>
   </header>
+  <div class="controls">
+    <button id="rerun-sam3" type="button">Re-capture SAM3 + grasp point</button>
+    <span id="action-status">Press <kbd>R</kbd> to refresh the segmentation and grasp point.</span>
+  </div>
   <main class="grid">
     <section class="panel"><h2>RGB</h2><img id="rgb" alt="RGB camera frame"></section>
     <section class="panel"><h2>Depth</h2><img id="depth" alt="Depth colormap"></section>
@@ -294,6 +383,30 @@ _INDEX_HTML = """<!doctype html>
 <script>
 const pollMs = Number(new URLSearchParams(location.search).get('poll_ms') || '%POLL_MS%');
 let lastFrame = null;
+let actionBusy = false;
+async function requestSam3Refresh() {
+  if (actionBusy) return;
+  actionBusy = true;
+  const button = document.getElementById('rerun-sam3');
+  const actionStatus = document.getElementById('action-status');
+  button.disabled = true;
+  actionStatus.textContent = 'requesting fresh SAM3 segmentation...';
+  try {
+    const res = await fetch('/action', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({action: 'rerun_sam3'})
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || res.statusText);
+    actionStatus.textContent = `queued SAM3 refresh ${data.request_id} after frame ${data.after_frame_id}`;
+  } catch (err) {
+    actionStatus.textContent = `SAM3 refresh request failed: ${err}`;
+  } finally {
+    button.disabled = false;
+    actionBusy = false;
+  }
+}
 async function refresh() {
   try {
     const res = await fetch('/frame.json', {cache: 'no-store'});
@@ -319,10 +432,21 @@ async function refresh() {
       depth_stats: data.depth_stats,
       sam3: data.sam3,
     }, null, 2);
+    if (data.sam3 && data.sam3.grasp) {
+      const p = data.sam3.grasp.position_world || [];
+      document.getElementById('action-status').textContent =
+        `SAM3 frame ${data.sam3.frame_id}: grasp point [${p.map(v => Number(v).toFixed(4)).join(', ')}]`;
+    } else if (data.sam3 && data.sam3.error) {
+      document.getElementById('action-status').textContent = `SAM3 error: ${data.sam3.error}`;
+    }
   } catch (err) {
     document.getElementById('status').textContent = `viewer error: ${err}`;
   }
 }
+document.getElementById('rerun-sam3').addEventListener('click', requestSam3Refresh);
+document.addEventListener('keydown', (event) => {
+  if (event.key && event.key.toLowerCase() === 'r') requestSam3Refresh();
+});
 refresh();
 setInterval(refresh, pollMs);
 </script>
@@ -361,6 +485,33 @@ class _ViewerHandler(BaseHTTPRequestHandler):
             return
         self._send_bytes(HTTPStatus.NOT_FOUND, b"not found", "text/plain")
 
+    def do_POST(self) -> None:
+        path = urlparse(self.path).path
+        if path != "/action":
+            self._send_bytes(HTTPStatus.NOT_FOUND, b"not found", "text/plain")
+            return
+
+        try:
+            length = int(self.headers.get("Content-Length", "0") or "0")
+            body = self.rfile.read(length) if length > 0 else b"{}"
+            payload = json.loads(body.decode("utf-8"))
+            action = payload.get("action")
+            if action != "rerun_sam3":
+                raise ValueError(f"Unsupported viewer action: {action!r}")
+            response = self.server.viewer.request_sam3_refresh()
+            response["ok"] = True
+            self._send_bytes(
+                HTTPStatus.OK,
+                json.dumps(response, separators=(",", ":")).encode("utf-8"),
+                "application/json",
+            )
+        except Exception as exc:
+            self._send_bytes(
+                HTTPStatus.BAD_REQUEST,
+                json.dumps({"ok": False, "error": str(exc)}, separators=(",", ":")).encode("utf-8"),
+                "application/json",
+            )
+
 
 class _ViewerHttpServer(ThreadingHTTPServer):
     def __init__(self, address: tuple[str, int], viewer: "G1VisionWebViewer") -> None:
@@ -385,6 +536,8 @@ class G1VisionWebViewer:
         self._latest: FrameSnapshot | None = None
         self._latest_sam3: Sam3Snapshot | None = None
         self._frame_id = 0
+        self._sam3_request_id = 0
+        self._pending_sam3_request: ViewerActionRequest | None = None
         self._server: _ViewerHttpServer | None = None
         self._thread: threading.Thread | None = None
 
@@ -420,6 +573,7 @@ class G1VisionWebViewer:
     ) -> None:
         result_count, best_score = _sam3_result_summary(results)
         overlay = build_sam3_overlay(frame_snapshot.rgb, results) if results else frame_snapshot.rgb.copy()
+        grasp = compute_grasp_point_from_sam3(frame_snapshot, results)
         with self._lock:
             self._latest_sam3 = Sam3Snapshot(
                 frame_id=frame_snapshot.frame_id,
@@ -428,6 +582,7 @@ class G1VisionWebViewer:
                 result_count=result_count,
                 best_score=best_score,
                 overlay_rgb=overlay,
+                grasp=grasp,
                 error=None,
             )
 
@@ -440,8 +595,26 @@ class G1VisionWebViewer:
                 result_count=0,
                 best_score=None,
                 overlay_rgb=None,
+                grasp=None,
                 error=error,
             )
+
+    def request_sam3_refresh(self) -> dict[str, Any]:
+        with self._lock:
+            self._sam3_request_id += 1
+            after_frame_id = 0 if self._latest is None else int(self._latest.frame_id)
+            self._pending_sam3_request = ViewerActionRequest(
+                request_id=self._sam3_request_id,
+                requested_time=time.time(),
+                after_frame_id=after_frame_id,
+            )
+            return {"request_id": self._sam3_request_id, "after_frame_id": after_frame_id}
+
+    def take_sam3_refresh_request(self) -> ViewerActionRequest | None:
+        with self._lock:
+            request = self._pending_sam3_request
+            self._pending_sam3_request = None
+            return request
 
     def frame_payload(self) -> dict[str, Any]:
         with self._lock:

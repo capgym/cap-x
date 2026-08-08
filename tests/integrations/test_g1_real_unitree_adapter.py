@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 import inspect
+import os
+import threading
 import time
 
 import msgpack
@@ -51,6 +53,34 @@ def _fake_hand_cmd(num_motors: int = 7) -> SimpleNamespace:
 def _fake_hand_state(joints: np.ndarray | None = None) -> SimpleNamespace:
     values = np.zeros(7, dtype=np.float64) if joints is None else np.asarray(joints, dtype=np.float64)
     return SimpleNamespace(motor_state=[SimpleNamespace(q=float(q)) for q in values])
+
+
+class _FakeGatewayArmActionMsg:
+    def __init__(self) -> None:
+        self.act = [0.0] * 14
+
+    def encode(self):
+        return tuple(self.act)
+
+
+class _FakeGatewayLcm:
+    def __init__(self) -> None:
+        self.subscriptions: list[tuple[str, object]] = []
+        self.published: list[tuple[str, object]] = []
+
+    def subscribe(self, channel: str, handler):
+        token = (channel, handler)
+        self.subscriptions.append(token)
+        return token
+
+    def unsubscribe(self, subscription) -> None:
+        pass
+
+    def publish(self, channel: str, payload) -> None:
+        self.published.append((channel, payload))
+
+    def fileno(self) -> int:
+        return -1
 
 
 def test_dex3_grasp_profiles_match_isaaclab_right_hand_motion_controller() -> None:
@@ -188,6 +218,150 @@ def test_lowcmd_real_mode_refuses_to_publish_before_lowstate() -> None:
     assert publisher.writes == 0
 
 
+def test_gateway_arm_action_maps_right_arm_and_preserves_left_arm() -> None:
+    from capx.integrations.g1.gateway import G1GatewayArmActionBridge
+
+    bridge = G1GatewayArmActionBridge(
+        dry_run=True,
+        arm_message_type=_FakeGatewayArmActionMsg,
+    )
+    q = np.arange(29, dtype=np.float64) / 10.0
+    bridge._handle_body_state(
+        "body_control_data",
+        SimpleNamespace(q=q, qd=np.zeros(29, dtype=np.float64), timestamp_us=123),
+    )
+    target = np.linspace(-0.7, 0.7, 7)
+
+    msg = bridge.build_arm_message(target)
+
+    assert bridge.has_low_state
+    assert msg.act[:7] == pytest.approx(q[15:22])
+    assert msg.act[7:14] == pytest.approx(target)
+    assert np.allclose(bridge.get_arm_joint_positions(), q[22:29])
+
+
+def test_gateway_arm_action_real_mode_refuses_before_body_control_data() -> None:
+    from capx.integrations.g1.gateway import G1GatewayArmActionBridge
+
+    fake_lcm = _FakeGatewayLcm()
+    bridge = G1GatewayArmActionBridge(
+        dry_run=False,
+        lcm_client=fake_lcm,
+        arm_message_type=_FakeGatewayArmActionMsg,
+        body_state_message_type=SimpleNamespace,
+        imu_message_type=SimpleNamespace,
+    )
+
+    with pytest.raises(RuntimeError, match="body_control_data"):
+        bridge.publish_joints(np.linspace(-0.2, 0.2, 7))
+
+    assert fake_lcm.published == []
+
+
+def test_gateway_arm_action_publishes_lcm_message() -> None:
+    from capx.integrations.g1.gateway import G1GatewayArmActionBridge
+
+    fake_lcm = _FakeGatewayLcm()
+    bridge = G1GatewayArmActionBridge(
+        dry_run=False,
+        lcm_client=fake_lcm,
+        arm_message_type=_FakeGatewayArmActionMsg,
+        body_state_message_type=SimpleNamespace,
+        imu_message_type=SimpleNamespace,
+    )
+    q = np.arange(29, dtype=np.float64) / 10.0
+    bridge._handle_body_state(
+        "body_control_data",
+        SimpleNamespace(q=q, qd=np.zeros(29, dtype=np.float64), timestamp_us=123),
+    )
+    target = np.linspace(-0.4, 0.4, 7)
+
+    assert bridge.publish_joints(target) is True
+
+    assert [item[0] for item in fake_lcm.subscriptions] == [
+        "body_control_data",
+        "state_estimator_data",
+    ]
+    assert fake_lcm.published == [("arm_action", tuple(bridge.last_command.act))]
+    assert bridge.last_command.act[:7] == pytest.approx(q[15:22])
+    assert bridge.last_command.act[7:14] == pytest.approx(target)
+
+
+def test_gateway_arm_action_serializes_lcm_io_across_threads() -> None:
+    from capx.integrations.g1.gateway import G1GatewayArmActionBridge
+
+    class ConcurrencyCheckingLcm(_FakeGatewayLcm):
+        def __init__(self) -> None:
+            super().__init__()
+            self.reader_fd, self.writer_fd = os.pipe()
+            os.write(self.writer_fd, b"x")
+            self.handle_started = threading.Event()
+            self.io_guard = threading.Lock()
+
+        def fileno(self) -> int:
+            return self.reader_fd
+
+        def handle(self) -> None:
+            if not self.io_guard.acquire(blocking=False):
+                raise RuntimeError(
+                    "only one thread is allowed to call LCM.handle() or "
+                    "LCM.handle_timeout() at a time"
+                )
+            try:
+                self.handle_started.set()
+                time.sleep(0.05)
+            finally:
+                self.io_guard.release()
+
+        def publish(self, channel: str, payload) -> None:
+            if not self.io_guard.acquire(blocking=False):
+                raise RuntimeError("concurrent LCM I/O")
+            try:
+                super().publish(channel, payload)
+            finally:
+                self.io_guard.release()
+
+        def close(self) -> None:
+            os.close(self.reader_fd)
+            os.close(self.writer_fd)
+
+    fake_lcm = ConcurrencyCheckingLcm()
+    bridge = G1GatewayArmActionBridge(
+        dry_run=False,
+        lcm_client=fake_lcm,
+        arm_message_type=_FakeGatewayArmActionMsg,
+        body_state_message_type=SimpleNamespace,
+        imu_message_type=SimpleNamespace,
+    )
+    q = np.arange(29, dtype=np.float64) / 10.0
+    bridge._handle_body_state(
+        "body_control_data",
+        SimpleNamespace(q=q, qd=np.zeros(29, dtype=np.float64), timestamp_us=123),
+    )
+    target = np.linspace(-0.4, 0.4, 7)
+    errors: list[BaseException] = []
+
+    def publish() -> None:
+        try:
+            bridge.publish_joints(target)
+        except BaseException as exc:
+            errors.append(exc)
+
+    first = threading.Thread(target=publish)
+    first.start()
+    assert fake_lcm.handle_started.wait(timeout=1.0)
+    second = threading.Thread(target=publish)
+    second.start()
+    first.join(timeout=1.0)
+    second.join(timeout=1.0)
+
+    fake_lcm.close()
+    assert not first.is_alive()
+    assert not second.is_alive()
+    assert errors == []
+    assert len(fake_lcm.published) == 2
+
+
 def test_lowcmd_connect_releases_motion_mode_before_publishing() -> None:
     from capx.integrations.g1.sdk import G1ArmSdkBridge
 
@@ -244,6 +418,38 @@ def test_lowcmd_connect_releases_motion_mode_before_publishing() -> None:
     assert ("factory", "enx6c1ff7c1192d") in events
     assert ("release", None) in events
     assert ("publisher", "rt/lowcmd") in events
+
+
+def test_g1_real_low_level_propagates_dry_run_to_custom_bridge() -> None:
+    from capx.envs.simulators.g1_real import G1RealLowLevel
+
+    class FakeBridge:
+        def __init__(self) -> None:
+            self.dry_run = False
+
+        def connect(self) -> None:
+            raise AssertionError("dry-run low-level env must not connect custom bridge")
+
+        def publish_joints(self, joints: np.ndarray) -> bool:
+            return True
+
+        def get_arm_joint_positions(self) -> np.ndarray:
+            return np.zeros(7, dtype=np.float64)
+
+        def close(self) -> None:
+            pass
+
+    bridge = FakeBridge()
+    env = G1RealLowLevel(
+        sdk_bridge=bridge,
+        dry_run=True,
+        privileged=False,
+        enable_render=False,
+        viser_debug=False,
+    )
+
+    assert env.dry_run is True
+    assert bridge.dry_run is True
 
 
 def test_g1_real_low_level_dry_run_publishes_7_joint_right_arm_target() -> None:
@@ -1468,3 +1674,78 @@ def test_g1_camera_api_decodes_protocol_a_and_builds_capx_observation() -> None:
     assert observation["camera_top"]["images"]["rgb"].shape == rgb.shape
     assert observation["camera_top"]["images"]["depth"].shape == (4, 5, 1)
     assert observation["timestamp"] == 10.5
+
+
+def test_dex3_left_hand_uses_mirrored_joint_signs_and_left_topics() -> None:
+    from capx.integrations.g1.sdk import (
+        G1Dex3HandBridge,
+        dex3_grasp_joints,
+        dex3_semantic_to_dds_joints,
+    )
+
+    target = dex3_grasp_joints(trigger=1.0, squeeze=0.0, hand_side="left")
+    bridge = G1Dex3HandBridge(
+        dry_run=True,
+        hand_side="left",
+        hand_cmd_factory=_fake_hand_cmd,
+    )
+    cmd = bridge.build_hand_cmd(target)
+
+    assert target == pytest.approx([-0.5, 0.4, 0.7, -1.0, -1.0, 0.0, 0.0])
+    assert bridge.publisher_topic == "rt/dex3/left/cmd"
+    assert bridge.state_topic == "rt/dex3/left/state"
+    assert [motor.q for motor in cmd.motor_cmd] == pytest.approx(
+        dex3_semantic_to_dds_joints(target, hand_side="left")
+    )
+
+
+def test_lowcmd_left_arm_command_maps_7_joint_vector_and_preserves_right_arm() -> None:
+    from capx.integrations.g1.sdk import G1ArmSdkBridge, G1_LEFT_ARM_MOTOR_INDICES
+
+    bridge = G1ArmSdkBridge(dry_run=True, arm_side="left", low_cmd_factory=_fake_low_cmd)
+    bridge._handle_low_state(_fake_low_state(mode_machine=5))
+    target = np.linspace(-0.7, 0.7, 7)
+
+    cmd = bridge.build_low_cmd(target)
+
+    assert G1_LEFT_ARM_MOTOR_INDICES == tuple(range(15, 22))
+    for i, motor_idx in enumerate(G1_LEFT_ARM_MOTOR_INDICES):
+        assert cmd.motor_cmd[motor_idx].q == pytest.approx(target[i])
+    assert cmd.motor_cmd[22].q == pytest.approx(2.2)
+
+
+def test_gateway_arm_action_maps_left_arm_and_preserves_right_arm() -> None:
+    from capx.integrations.g1.gateway import G1GatewayArmActionBridge
+
+    bridge = G1GatewayArmActionBridge(
+        dry_run=True,
+        arm_side="left",
+        arm_message_type=_FakeGatewayArmActionMsg,
+    )
+    q = np.arange(29, dtype=np.float64) / 10.0
+    bridge._handle_body_state(
+        "body_control_data",
+        SimpleNamespace(q=q, qd=np.zeros(29, dtype=np.float64), timestamp_us=123),
+    )
+    target = np.linspace(-0.7, 0.7, 7)
+
+    msg = bridge.build_arm_message(target)
+
+    assert msg.act[:7] == pytest.approx(target)
+    assert msg.act[7:14] == pytest.approx(q[22:29])
+    assert np.allclose(bridge.get_arm_joint_positions(), q[15:22])
+
+
+def test_left_control_api_matches_low_level_arm_side_and_exposes_right_api_surface() -> None:
+    from capx.integrations.g1.control import G1LeftRealControlApi, G1RealControlApi
+
+    class LeftEnv:
+        arm_side = "left"
+
+    left_api = G1LeftRealControlApi(LeftEnv(), use_sam3=False)
+    generic_left_api = G1RealControlApi(LeftEnv(), use_sam3=False, arm_side="left")
+
+    assert left_api.arm_side == "left"
+    assert set(left_api.functions()) == set(generic_left_api.functions())
+    with pytest.raises(ValueError, match="does not match"):
+        G1RealControlApi(LeftEnv(), use_sam3=False)

@@ -8,7 +8,7 @@ env:
     _target_: capx.envs.tasks.base.CodeExecEnvConfig
     low_level:
       _target_: capx.envs.simulators.g1_real.G1RealLowLevel
-      network_interface: enx6c1ff7c1192d
+      network_interface: null  # Read UNITREE_NETWORK_INTERFACE; machine-specific interface names must not be hard-coded.
       dry_run: null
       observation_server_port: 9000
       wait_for_observation_on_reset: false

@@ -1,17 +1,19 @@
 # Usage:
 #   export CAPX_G1_DRY_RUN=false
-#   uv run --no-sync --active capx/envs/launch.py --config-path env_configs/g1/g1_grasp_bottle.yaml --num-workers 1
+#   uv run --no-sync --active capx/envs/launch.py --config-path env_configs/g1/g1_grasp_bottle_left.yaml --num-workers 1
 
 env:
-  _target_: capx.envs.tasks.unitree_g1.grasp_bottle.UnitreeG1GraspBottleCodeEnv
+  _target_: capx.envs.tasks.unitree_g1.grasp_bottle_left.UnitreeG1LeftGraspBottleCodeEnv
   cfg:
     _target_: capx.envs.tasks.base.CodeExecEnvConfig
     low_level:
       _target_: capx.envs.simulators.g1_real.G1RealLowLevel
       network_interface: null  # Read UNITREE_NETWORK_INTERFACE; machine-specific interface names must not be hard-coded.
+      arm_side: left
       dry_run: null
       sdk_bridge:
         _target_: capx.integrations.g1.gateway.G1GatewayArmActionBridge
+        arm_side: left
         lcm_url: udpm://239.255.76.67:7667?ttl=255
         lcm_types_dir: /home/peilab/development/OpenHomie/HomieDeploy/g1_gym_deploy/lcm_types
         arm_channel: arm_action
@@ -21,23 +23,23 @@ env:
       wait_for_observation_on_reset: true
       sam3_mask_popup: true
       grasp_debug_visualization: true
-      grasp_debug_output_dir: outputs/g1_grasp_bottle/grasp_debug
+      grasp_debug_output_dir: outputs/g1_grasp_bottle_left/grasp_debug
       grasp_debug_approach_distance: 0.1
       write_timeout: 2.0
       enable_dex3: true
-      dex3_hand_side: right
-      dex3_hand_cmd_topic: rt/dex3/right/cmd
-      dex3_hand_state_topic: rt/lf/dex3/right/state
+      dex3_hand_side: left
+      dex3_hand_cmd_topic: rt/dex3/left/cmd
+      dex3_hand_state_topic: rt/dex3/left/state
       joint_interpolation_steps: 50
-      # Lift the right arm out to the robot's right side before the first Cartesian grasp move.
+      # Lift the left arm out to the robot's left side before the first Cartesian grasp move.
       # Joint order: shoulder pitch, shoulder roll, shoulder yaw, elbow, wrist roll, wrist pitch, wrist yaw.
       pregrasp_side_before_first_pose: true
-      pregrasp_side_joints: [0.0, -1.25, 0.0, 1.1, 0.0, 0.0, 0.0]
+      pregrasp_side_joints: [0.0, 1.25, 0.0, 1.1, 0.0, 0.0, 0.0]
     privileged: false
     enable_render: false
     viser_debug: false
     apis:
-      - G1RealControlApi
+      - G1LeftRealControlApi
       - G1CameraApi
 
 api_servers:
@@ -55,13 +57,13 @@ api_servers:
     port: 8116
     host: 127.0.0.1
     robot: env_configs/g1/g1_29dof_with_hand.urdf
-    target_link: right_hand_palm_link
+    target_link: left_hand_palm_link
     root_link: torso_link
     fk_position_tolerance: 0.12
     fk_rotation_tolerance: 0.2
 
 record_video: false
-output_dir: ./outputs/g1_grasp_bottle
+output_dir: ./outputs/g1_grasp_bottle_left
 
 trials: 1
 num_workers: 1

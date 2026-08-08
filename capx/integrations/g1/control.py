@@ -17,18 +17,20 @@ from capx.integrations.g1.grasp import (
     closed_pinch_center_offset,
 )
 from capx.integrations.g1.sdk import (
+    G1_ARM_DUAL_CFG_SLICE_BY_SIDE,
+    G1_ARM_WITH_HAND_CFG_SLICE_BY_SIDE,
     G1_DUAL_ARM_NUM_JOINTS,
     G1_NUM_ARM_JOINTS,
-    G1_RIGHT_ARM_DUAL_CFG_SLICE,
-    G1_RIGHT_ARM_WITH_HAND_CFG_SLICE,
     G1_WITH_HAND_NUM_JOINTS,
     as_g1_arm_joints,
+    as_g1_dex3_hand_joints,
     dex3_grasp_joints,
+    normalize_g1_arm_side,
 )
 
 
 class G1RealControlApi(FrankaControlApi):
-    """CaP-X API for the Unitree G1 right arm and right Dex3 hand."""
+    """CaP-X interface for one configured Unitree G1 arm and Dex3 hand."""
 
     def __init__(
         self,
@@ -36,7 +38,15 @@ class G1RealControlApi(FrankaControlApi):
         tcp_offset: list[float] | None = None,
         use_sam3: bool = True,
         debug: bool = False,
+        arm_side: str = "right",
     ) -> None:
+        self.arm_side = normalize_g1_arm_side(arm_side)
+        configured_side = getattr(env, "arm_side", None)
+        if configured_side is not None and normalize_g1_arm_side(configured_side) != self.arm_side:
+            raise ValueError(
+                f"G1 control interface arm_side={self.arm_side} does not match "
+                f"low-level arm_side={configured_side}."
+            )
         super().__init__(
             env,
             tcp_offset=[0.0, 0.0, 0.0] if tcp_offset is None else tcp_offset,
@@ -44,6 +54,12 @@ class G1RealControlApi(FrankaControlApi):
             real=True,
             debug=debug,
         )
+
+    @property
+    def _active_arm_side(self) -> str:
+        """Return the configured side, defaulting old partially built APIs to right."""
+
+        return normalize_g1_arm_side(getattr(self, "arm_side", "right"))
 
     def functions(self) -> dict[str, Any]:
         return {
@@ -67,7 +83,7 @@ class G1RealControlApi(FrankaControlApi):
 
     def _current_joints(self) -> np.ndarray:
         if hasattr(self._env, "get_current_arm_joints"):
-            return as_g1_arm_joints(self._env.get_current_arm_joints()).copy()
+            return as_g1_arm_joints(self._env.get_current_arm_joints(), arm_side=self._active_arm_side).copy()
         get_observation = getattr(self._env, "get_observation", None)
         if not callable(get_observation):
             return np.zeros(G1_NUM_ARM_JOINTS, dtype=np.float64)
@@ -75,18 +91,36 @@ class G1RealControlApi(FrankaControlApi):
         joints = obs.get("robot_joint_pos") if isinstance(obs, dict) else None
         if joints is None:
             return np.zeros(G1_NUM_ARM_JOINTS, dtype=np.float64)
-        return as_g1_arm_joints(joints).copy()
+        return as_g1_arm_joints(joints, arm_side=self._active_arm_side).copy()
 
     @staticmethod
     def _extract_right_arm_joints(cfg: np.ndarray) -> np.ndarray:
+        """Compatibility helper for historical callers expecting the right arm."""
+
         arr = np.asarray(cfg, dtype=np.float64).reshape(-1)
         if arr.size == G1_NUM_ARM_JOINTS:
             return as_g1_arm_joints(arr)
         if arr.size == G1_WITH_HAND_NUM_JOINTS:
-            return as_g1_arm_joints(arr[G1_RIGHT_ARM_WITH_HAND_CFG_SLICE])
+            return as_g1_arm_joints(arr[G1_ARM_WITH_HAND_CFG_SLICE_BY_SIDE["right"]])
         if arr.size >= G1_DUAL_ARM_NUM_JOINTS:
-            return as_g1_arm_joints(arr[G1_RIGHT_ARM_DUAL_CFG_SLICE])
+            return as_g1_arm_joints(arr[G1_ARM_DUAL_CFG_SLICE_BY_SIDE["right"]])
         return as_g1_arm_joints(arr)
+
+    def _extract_arm_joints(self, cfg: np.ndarray) -> np.ndarray:
+        arr = np.asarray(cfg, dtype=np.float64).reshape(-1)
+        if arr.size == G1_NUM_ARM_JOINTS:
+            return as_g1_arm_joints(arr, arm_side=self._active_arm_side)
+        if arr.size == G1_WITH_HAND_NUM_JOINTS:
+            return as_g1_arm_joints(
+                arr[G1_ARM_WITH_HAND_CFG_SLICE_BY_SIDE[self._active_arm_side]],
+                arm_side=self._active_arm_side,
+            )
+        if arr.size >= G1_DUAL_ARM_NUM_JOINTS:
+            return as_g1_arm_joints(
+                arr[G1_ARM_DUAL_CFG_SLICE_BY_SIDE[self._active_arm_side]],
+                arm_side=self._active_arm_side,
+            )
+        return as_g1_arm_joints(arr, arm_side=self._active_arm_side)
 
     def _solve_ik(self, position: np.ndarray, quaternion_wxyz: np.ndarray) -> np.ndarray:
         target_pose = np.concatenate([quaternion_wxyz, position])
@@ -102,10 +136,13 @@ class G1RealControlApi(FrankaControlApi):
             raise RuntimeError(
                 f"G1 PyRoKi IK failed for position={pos_str}, quaternion_wxyz={quat_str}. {exc}"
             ) from exc
-        return self._extract_right_arm_joints(self.cfg)
+        return self._extract_arm_joints(self.cfg)
 
     def _closed_pinch_center_offset(self) -> np.ndarray:
-        return closed_pinch_center_offset()
+        return closed_pinch_center_offset(
+            hand=self._active_arm_side,
+            link_frame=f"{self._active_arm_side}_hand_palm_link",
+        )
 
     def _latest_camera_to_world(self) -> tuple[np.ndarray, SciRotation] | None:
         env = getattr(self, "_env", None)
@@ -245,7 +282,7 @@ class G1RealControlApi(FrankaControlApi):
             z_approach: Optional world +Z approach offset before the final motion.
 
         Notes:
-            PyRoKi still solves IK for right_hand_palm_link. This function first
+            PyRoKi still solves IK for the configured hand_palm_link. This function first
             converts the desired closed-pinch-center pose into the palm-link pose,
             using the G1 Dex3 closed-hand geometry from the URDF.
         """
@@ -441,17 +478,17 @@ class G1RealControlApi(FrankaControlApi):
             self.move_pinch_center_to_pose(lift_pos, quat)
 
     def move_to_joints(self, joints: Any) -> None:
-        """Move the G1 right arm to a 7-DoF joint target.
+        """Move the G1 configured arm to a 7-DoF joint target.
 
         Args:
             joints: 7 joint angles in radians, ordered as shoulder pitch, shoulder roll,
                 shoulder yaw, elbow, wrist roll, wrist pitch, wrist yaw.
         """
 
-        self._env.move_to_joints_blocking(as_g1_arm_joints(joints))
+        self._env.move_to_joints_blocking(as_g1_arm_joints(joints, arm_side=self._active_arm_side))
 
     def move_to_pregrasp_side_pose(self) -> None:
-        """Move the right arm to the configured side-lift pregrasp waypoint.
+        """Move the configured arm to the configured side-lift pregrasp waypoint.
 
         This waypoint is configured on the G1 low-level environment and is intended
         to lift the hand away from the table before Cartesian grasp motion.
@@ -475,7 +512,7 @@ class G1RealControlApi(FrankaControlApi):
         quaternion_wxyz: np.ndarray,
         z_approach: float = 0.0,
     ) -> None:
-        """Move the G1 right hand palm link to a Cartesian pose through PyRoKi IK.
+        """Move the G1 configured hand palm link to a Cartesian pose through PyRoKi IK.
 
         Args:
             position: (3,) target XYZ in meters, in the PyRoKi/world frame.
@@ -484,7 +521,7 @@ class G1RealControlApi(FrankaControlApi):
         """
 
         pos_str = np.array2string(np.asarray(position), precision=4)
-        self._log_step("goto_pose", f"Moving G1 right hand palm to position {pos_str}.")
+        self._log_step("goto_pose", f"Moving G1 configured hand palm to position {pos_str}.")
 
         pos = np.asarray(position, dtype=np.float64).reshape(3)
         quat_wxyz = np.asarray(quaternion_wxyz, dtype=np.float64).reshape(4)
@@ -502,40 +539,40 @@ class G1RealControlApi(FrankaControlApi):
             self.move_to_joints(self._solve_ik(approach_pos, quat_wxyz))
 
         self.move_to_joints(self._solve_ik(offset_pos, quat_wxyz))
-        self._log_step_update(text="G1 right hand palm motion complete.")
+        self._log_step_update(text="G1 configured hand palm motion complete.")
 
     def open_gripper(self) -> None:
-        """Open the right Dex3 hand."""
+        """Open the selected Dex3 hand."""
 
-        self._log_step("open_gripper", "Opening G1 right Dex3 hand.")
+        self._log_step("open_gripper", "Opening G1 selected Dex3 hand.")
         if hasattr(self._env, "open_dex3_hand"):
             self._env.open_dex3_hand()
         elif hasattr(self._env, "_set_gripper"):
             self._env._set_gripper(1.0)
-        self._log_step_update(text="G1 right Dex3 hand open.")
+        self._log_step_update(text="G1 selected Dex3 hand open.")
 
     def close_gripper(self) -> None:
-        """Close the right Dex3 hand with thumb, index, and middle fingers."""
+        """Close the selected Dex3 hand with thumb, index, and middle fingers."""
 
-        self._log_step("close_gripper", "Closing G1 right Dex3 hand with three fingers.")
+        self._log_step("close_gripper", "Closing G1 selected Dex3 hand with three fingers.")
         if hasattr(self._env, "close_dex3_hand"):
             self._env.close_dex3_hand()
         elif hasattr(self._env, "_set_gripper"):
             self._env._set_gripper(0.0)
-        self._log_step_update(text="G1 right Dex3 hand closed.")
+        self._log_step_update(text="G1 selected Dex3 hand closed.")
 
     def close_index_pinch(self) -> None:
-        """Close the right Dex3 thumb toward the index finger for a 2D pinch."""
+        """Close the selected Dex3 thumb toward the index finger for a 2D pinch."""
 
-        self._log_step("close_index_pinch", "Closing G1 right Dex3 thumb-index pinch.")
+        self._log_step("close_index_pinch", "Closing G1 selected Dex3 thumb-index pinch.")
         if hasattr(self._env, "close_dex3_index_pinch"):
             self._env.close_dex3_index_pinch()
         elif hasattr(self._env, "_set_gripper"):
             self._env._set_gripper(0.0)
-        self._log_step_update(text="G1 right Dex3 thumb-index pinch closed.")
+        self._log_step_update(text="G1 selected Dex3 thumb-index pinch closed.")
 
     def set_gripper_trigger_squeeze(self, trigger: float, squeeze: float) -> None:
-        """Control the right Dex3 hand with IsaacLab-style trigger/squeeze inputs.
+        """Control the selected Dex3 hand with IsaacLab-style trigger/squeeze inputs.
 
         Args:
             trigger: 0 opens, 1 closes thumb+index for a two-finger pinch.
@@ -547,29 +584,50 @@ class G1RealControlApi(FrankaControlApi):
             choose between index pinch, middle pinch, or full three-finger grasp.
         """
 
-        target = dex3_grasp_joints(trigger=trigger, squeeze=squeeze)
+        target = dex3_grasp_joints(trigger=trigger, squeeze=squeeze, hand_side=self._active_arm_side)
         target_str = np.array2string(target, precision=4, suppress_small=True)
         self._log_step(
             "set_gripper_trigger_squeeze",
-            f"Moving G1 right Dex3 hand to trigger={float(trigger):.3f}, squeeze={float(squeeze):.3f}.",
+            f"Moving G1 selected Dex3 hand to trigger={float(trigger):.3f}, squeeze={float(squeeze):.3f}.",
         )
         print(f"[g1-real] set_gripper_trigger_squeeze target={target_str}")
         self.move_hand_joints(target)
-        self._log_step_update(text="G1 right Dex3 trigger/squeeze command complete.")
+        self._log_step_update(text="G1 selected Dex3 trigger/squeeze command complete.")
 
     def close_middle_pinch(self) -> None:
-        """Close the right Dex3 thumb toward the middle finger using squeeze only."""
+        """Close the selected Dex3 thumb toward the middle finger using squeeze only."""
 
         self.set_gripper_trigger_squeeze(trigger=0.0, squeeze=1.0)
 
     def move_hand_joints(self, joints: Any) -> None:
-        """Move the right Dex3 hand to 7 semantic joint targets.
+        """Move the selected Dex3 hand to 7 semantic joint targets.
 
         Args:
-            joints: Right hand joints in order thumb_0, thumb_1, thumb_2,
+            joints: Selected hand joints in order thumb_0, thumb_1, thumb_2,
                 index_0, index_1, middle_0, middle_1.
         """
 
         if not hasattr(self._env, "move_hand_to_joints_blocking"):
             raise RuntimeError("The current G1 environment does not expose Dex3 hand joint control.")
-        self._env.move_hand_to_joints_blocking(joints)
+        self._env.move_hand_to_joints_blocking(
+            as_g1_dex3_hand_joints(joints, hand_side=self._active_arm_side)
+        )
+
+
+class G1LeftRealControlApi(G1RealControlApi):
+    """Agent-facing G1 interface with the same functions bound to the left arm and left Dex3 hand."""
+
+    def __init__(
+        self,
+        env: BaseEnv,
+        tcp_offset: list[float] | None = None,
+        use_sam3: bool = True,
+        debug: bool = False,
+    ) -> None:
+        super().__init__(
+            env,
+            tcp_offset=tcp_offset,
+            use_sam3=use_sam3,
+            debug=debug,
+            arm_side="left",
+        )

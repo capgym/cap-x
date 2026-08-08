@@ -28,6 +28,8 @@ def test_unitree_g1_grasp_bottle_task_prompt_and_oracle_use_front_policy_pinch_c
     assert oracle is not None
     assert "sample_grasp_center_pose" in oracle
     assert "grasp_at_pinch_center" in oracle
+    assert "move_to_pregrasp_side_pose" in oracle
+    assert oracle.index("grasp_at_pinch_center") < oracle.index("move_to_pregrasp_side_pose")
     assert "sample_grasp_pose" not in oracle
     assert "goto_pose(grasp_pos, grasp_quat" not in oracle
     assert "Junhao-style front policy" in prompt
@@ -41,6 +43,7 @@ def test_unitree_g1_grasp_bottle_task_prompt_and_oracle_use_front_policy_pinch_c
     assert "move_to_pinch_pregrasp(pos, quat)" in prompt
     assert "move_pinch_center_horizontal_line" in prompt
     assert "streamed horizontal pregrasp-to-grasp approach" in prompt
+    assert "After the grasp/lift completes" in prompt
 
 
 def test_unitree_g1_grasp_bottle_yaml_points_to_task_and_right_hand() -> None:
@@ -57,7 +60,7 @@ def test_unitree_g1_grasp_bottle_yaml_points_to_task_and_right_hand() -> None:
         "capx.envs.tasks.unitree_g1.grasp_bottle.UnitreeG1GraspBottleCodeEnv"
     )
     assert low_level["_target_"] == "capx.envs.simulators.g1_real.G1RealLowLevel"
-    assert low_level["network_interface"] == "enx6c1ff7c1192d"
+    assert low_level["network_interface"] is None
     assert low_level["enable_dex3"] is True
     assert low_level["sam3_mask_popup"] is True
     assert low_level["grasp_debug_visualization"] is True
@@ -116,3 +119,33 @@ def test_g1_real_control_api_exposes_dex3_hand_functions_to_task_code() -> None:
     assert "move_to_pinch_pregrasp" in functions
     assert "move_pinch_center_horizontal_line" in functions
     assert "grasp_at_pinch_center" in functions
+
+
+def test_unitree_g1_left_grasp_bottle_task_is_registered() -> None:
+    import capx.envs.tasks as tasks
+
+    cfg = tasks.get_config("unitree_g1_grasp_bottle_left_code_env")
+
+    assert "unitree_g1_grasp_bottle_left_code_env" in tasks.list_exec_envs()
+    assert cfg.low_level == "g1_real_low_level"
+    assert cfg.apis == ["G1LeftRealControlApi", "G1CameraApi"]
+
+
+def test_unitree_g1_left_grasp_bottle_yaml_routes_every_control_layer_left() -> None:
+    cfg = DictLoader.load("env_configs/g1/g1_grasp_bottle_left.yaml")
+
+    task_cfg = cfg["env"]["cfg"]
+    low_level = task_cfg["low_level"]
+    pyroki_server = cfg["api_servers"][2]
+
+    assert cfg["env"]["_target_"] == (
+        "capx.envs.tasks.unitree_g1.grasp_bottle_left.UnitreeG1LeftGraspBottleCodeEnv"
+    )
+    assert low_level["arm_side"] == "left"
+    assert low_level["sdk_bridge"]["arm_side"] == "left"
+    assert low_level["dex3_hand_side"] == "left"
+    assert low_level["dex3_hand_cmd_topic"] == "rt/dex3/left/cmd"
+    assert low_level["dex3_hand_state_topic"] == "rt/dex3/left/state"
+    assert low_level["pregrasp_side_joints"] == [0.0, 1.25, 0.0, 1.1, 0.0, 0.0, 0.0]
+    assert task_cfg["apis"] == ["G1LeftRealControlApi", "G1CameraApi"]
+    assert pyroki_server["target_link"] == "left_hand_palm_link"
