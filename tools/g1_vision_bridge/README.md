@@ -13,6 +13,10 @@ G1 机载电脑 RGB-D 相机
   -> CaP-X G1RealLowLevel msgpack server, 默认 127.0.0.1:9000
 ```
 
+`publisher_realsense.py` 默认调用 librealsense/`pyrealsense2` 的设备出厂标定，
+把 RGB 重采样到 depth optical frame，并直接读取当前 depth stream 的内参 K。
+因此不需要手工填写 RGB↔depth 外参；传入的安装外参仍然是 `T_torso_depth`。
+
 如果机器人端已经启动了方案 A 的 camera server，可以直接使用本目录的 ZMQ 客户端：
 
 ```text
@@ -105,6 +109,11 @@ python -m pip install -r tools/g1_vision_bridge/requirements-client.txt
 
 API 也兼容旧的 `ego_view_depth` JPEG depth image，但这种 JPEG 只用于显示，不能作为真实抓取的
 米制深度。
+
+注意：旧 5555 ZMQ payload 本身没有携带 RealSense 出厂内参或 RGB-D 对齐元数据。
+即使 RGB 与 depth 分辨率相同，也不能据此认定已经对齐。真实抓取只应在机载 publisher
+已用官方 SDK 对齐到 depth frame，且 CaP-X 使用同一 depth K/`T_torso_depth` 时走此路径；
+否则改用下面的 `publisher_realsense.py` 官方标定路径。
 
 先确认本机路由确实从指定网口出：
 
@@ -311,6 +320,9 @@ python tools/g1_vision_bridge/publisher_realsense.py \
   --fps 30 \
   --extrinsics-yaml env_configs/g1/g1_d435_depth_optical_extrinsics_torso.yaml
 ```
+
+启动日志必须出现 `RealSense factory alignment: RGB -> depth optical frame`。
+每帧携带的 K 来自相机本机的 active depth profile，不再由本机静态内参 YAML 猜测。
 
 如果有多台 RealSense，指定序列号：
 

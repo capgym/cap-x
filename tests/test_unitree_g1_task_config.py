@@ -35,14 +35,16 @@ def test_unitree_g1_grasp_bottle_task_prompt_and_oracle_use_front_policy_pinch_c
     assert "Junhao-style front policy" in prompt
     assert "contact/visual center as pinch target" in prompt
     assert "fixed vertical front-palm rotation" in prompt
-    assert "0.20m along world -X" in prompt
+    assert "elevated transit" in prompt
+    assert "0.06m" in prompt
+    assert "local table plane" in prompt
     assert "set_gripper_trigger_squeeze(trigger, squeeze)" in prompt
     assert "close_index_pinch()" in prompt
     assert "close_middle_pinch()" in prompt
     assert "move_hand_joints(joints)" in prompt
     assert "move_to_pinch_pregrasp(pos, quat)" in prompt
     assert "move_pinch_center_horizontal_line" in prompt
-    assert "streamed horizontal pregrasp-to-grasp approach" in prompt
+    assert "short final horizontal approach" in prompt
     assert "After the grasp/lift completes" in prompt
 
 
@@ -66,6 +68,12 @@ def test_unitree_g1_grasp_bottle_yaml_points_to_task_and_right_hand() -> None:
     assert low_level["grasp_debug_visualization"] is True
     assert low_level["grasp_debug_output_dir"] == "outputs/g1_grasp_bottle/grasp_debug"
     assert low_level["grasp_debug_approach_distance"] == 0.1
+    assert low_level["table_estimation_enabled"] is True
+    assert low_level["table_estimation_required"] is True
+    assert low_level["table_high_clearance_m"] == 0.20
+    assert low_level["target_high_clearance_m"] == 0.12
+    assert low_level["target_table_clearance_m"] == 0.025
+    assert low_level["short_approach_distance_m"] == 0.06
     assert low_level["dex3_hand_side"] == "right"
     assert low_level["dex3_hand_cmd_topic"] == "rt/dex3/right/cmd"
     assert low_level["dex3_hand_state_topic"] == "rt/lf/dex3/right/state"
@@ -144,6 +152,9 @@ def test_unitree_g1_left_grasp_bottle_yaml_routes_every_control_layer_left() -> 
     assert low_level["arm_side"] == "left"
     assert low_level["sdk_bridge"]["arm_side"] == "left"
     assert low_level["dex3_hand_side"] == "left"
+    assert low_level["table_estimation_enabled"] is True
+    assert low_level["table_estimation_required"] is True
+    assert low_level["short_approach_distance_m"] == 0.06
     assert low_level["dex3_hand_cmd_topic"] == "rt/dex3/left/cmd"
     assert low_level["dex3_hand_state_topic"] == "rt/dex3/left/state"
     assert low_level["pregrasp_side_joints"] == [0.0, 1.25, 0.0, 1.1, 0.0, 0.0, 0.0]

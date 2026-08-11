@@ -39,7 +39,9 @@ def _key_get(mapping: dict[Any, Any] | None, key: str, default: Any = None) -> A
     return mapping.get(key.encode(), default)
 
 
-def _start_msgpack_server_in_background(server: MsgpackNumpyServer) -> tuple[asyncio.AbstractEventLoop, threading.Thread]:
+def _start_msgpack_server_in_background(
+    server: MsgpackNumpyServer,
+) -> tuple[asyncio.AbstractEventLoop, threading.Thread]:
     loop = asyncio.new_event_loop()
 
     def run_loop() -> None:
@@ -86,6 +88,12 @@ class G1RealLowLevel(BaseEnv):
         grasp_debug_visualization: bool | None = None,
         grasp_debug_output_dir: str | None = None,
         grasp_debug_approach_distance: float = 0.1,
+        table_estimation_enabled: bool = True,
+        table_estimation_required: bool = True,
+        table_high_clearance_m: float = 0.20,
+        target_high_clearance_m: float = 0.12,
+        target_table_clearance_m: float = 0.025,
+        short_approach_distance_m: float = 0.06,
     ) -> None:
         super().__init__()
         self.seed_value = seed
@@ -111,7 +119,9 @@ class G1RealLowLevel(BaseEnv):
         self._arm_hold_lock = threading.Lock()
         self._arm_hold_last_error: str | None = None
         self._pregrasp_side_joints = (
-            None if pregrasp_side_joints is None else as_g1_arm_joints(pregrasp_side_joints, arm_side=self.arm_side).copy()
+            None
+            if pregrasp_side_joints is None
+            else as_g1_arm_joints(pregrasp_side_joints, arm_side=self.arm_side).copy()
         )
         self._pregrasp_side_before_first_pose = bool(pregrasp_side_before_first_pose)
         self._pregrasp_side_done = False
@@ -140,11 +150,19 @@ class G1RealLowLevel(BaseEnv):
             else str(grasp_debug_output_dir)
         )
         self.grasp_debug_approach_distance = float(grasp_debug_approach_distance)
+        self.table_estimation_enabled = bool(table_estimation_enabled)
+        self.table_estimation_required = bool(table_estimation_required)
+        self.table_high_clearance_m = float(table_high_clearance_m)
+        self.target_high_clearance_m = float(target_high_clearance_m)
+        self.target_table_clearance_m = float(target_table_clearance_m)
+        self.short_approach_distance_m = float(short_approach_distance_m)
 
         if default_joint_positions is None:
             self._current_joints = np.zeros(G1_NUM_ARM_JOINTS, dtype=np.float64)
         else:
-            self._current_joints = as_g1_arm_joints(default_joint_positions, arm_side=self.arm_side).copy()
+            self._current_joints = as_g1_arm_joints(
+                default_joint_positions, arm_side=self.arm_side
+            ).copy()
 
         self.sdk_bridge = sdk_bridge or G1ArmSdkBridge(
             network_interface=network_interface,
@@ -416,11 +434,7 @@ class G1RealLowLevel(BaseEnv):
         return {
             "success": True,
             "healthy": bool(
-                enabled
-                and target_available
-                and thread_alive
-                and not paused
-                and last_error is None
+                enabled and target_available and thread_alive and not paused and last_error is None
             ),
             "enabled": enabled,
             "dry_run": False,
@@ -440,7 +454,10 @@ class G1RealLowLevel(BaseEnv):
             self.seed_value = seed
 
         if self.wait_for_observation_on_reset:
-            while self.low_level_server is not None and self.low_level_server.latest_observation is None:
+            while (
+                self.low_level_server is not None
+                and self.low_level_server.latest_observation is None
+            ):
                 print("Waiting for observation from G1 real environment...")
                 time.sleep(1.0)
 
@@ -514,7 +531,10 @@ class G1RealLowLevel(BaseEnv):
         )
         should_hold_target = False
         try:
-            if self._joint_interpolation_steps > 0 and np.linalg.norm(self._current_joints - target) >= tolerance:
+            if (
+                self._joint_interpolation_steps > 0
+                and np.linalg.norm(self._current_joints - target) >= tolerance
+            ):
                 waypoints = np.linspace(
                     self._current_joints,
                     target,
@@ -635,11 +655,17 @@ class G1RealLowLevel(BaseEnv):
             max_step = float(max_joint_step)
             if max_step <= 0.0:
                 raise ValueError("max_joint_step must be positive when provided.")
-            start = self._current_joints.copy() if self.dry_run else self.sdk_bridge.get_arm_joint_positions().copy()
+            start = (
+                self._current_joints.copy()
+                if self.dry_run
+                else self.sdk_bridge.get_arm_joint_positions().copy()
+            )
             traj = self._densify_joint_trajectory(start, traj, max_joint_step=max_step)
 
         period = self._action_publish_period if dt is None else max(float(dt), 0.0)
-        print(f"[g1-real] stream_joint_trajectory points={traj.shape[0]} dt={period:.4f} dry_run={self.dry_run}")
+        print(
+            f"[g1-real] stream_joint_trajectory points={traj.shape[0]} dt={period:.4f} dry_run={self.dry_run}"
+        )
 
         if self.dry_run:
             for target in self._stream_targets_with_final_hold(traj, period, hold_final_seconds):
@@ -727,15 +753,21 @@ class G1RealLowLevel(BaseEnv):
 
     def open_dex3_hand(self) -> None:
         self._gripper_fraction = 1.0
-        self.move_hand_to_joints_blocking(dex3_grasp_joints(trigger=0.0, squeeze=0.0, hand_side=self.dex3_hand_side))
+        self.move_hand_to_joints_blocking(
+            dex3_grasp_joints(trigger=0.0, squeeze=0.0, hand_side=self.dex3_hand_side)
+        )
 
     def close_dex3_hand(self) -> None:
         self._gripper_fraction = 0.0
-        self.move_hand_to_joints_blocking(dex3_grasp_joints(trigger=1.0, squeeze=1.0, hand_side=self.dex3_hand_side))
+        self.move_hand_to_joints_blocking(
+            dex3_grasp_joints(trigger=1.0, squeeze=1.0, hand_side=self.dex3_hand_side)
+        )
 
     def close_dex3_index_pinch(self) -> None:
         self._gripper_fraction = 0.0
-        self.move_hand_to_joints_blocking(dex3_grasp_joints(trigger=1.0, squeeze=0.0, hand_side=self.dex3_hand_side))
+        self.move_hand_to_joints_blocking(
+            dex3_grasp_joints(trigger=1.0, squeeze=0.0, hand_side=self.dex3_hand_side)
+        )
 
     def _set_gripper(self, fraction: float) -> None:
         self._gripper_fraction = float(np.clip(fraction, 0.0, 1.0))

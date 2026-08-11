@@ -25,6 +25,68 @@ def _g1_composed_camera_jpeg_bytes_from_rgb(rgb: np.ndarray) -> bytes:
     return bytes(buf)
 
 
+def test_realsense_publisher_uses_factory_depth_alignment(monkeypatch) -> None:
+    import sys
+    from types import SimpleNamespace
+
+    requested_streams: list[str] = []
+    alignment_targets: list[str] = []
+
+    class FakeVideoStreamProfile:
+        def as_video_stream_profile(self):
+            return self
+
+        def get_intrinsics(self):
+            return SimpleNamespace(fx=400.0, fy=401.0, ppx=319.0, ppy=239.0)
+
+    class FakeDevice:
+        def first_depth_sensor(self):
+            return SimpleNamespace(get_depth_scale=lambda: 0.001)
+
+    class FakeProfile:
+        def get_device(self):
+            return FakeDevice()
+
+        def get_stream(self, stream):
+            requested_streams.append(stream)
+            return FakeVideoStreamProfile()
+
+    class FakePipeline:
+        def start(self, config):
+            return FakeProfile()
+
+    class FakeConfig:
+        def enable_device(self, serial):
+            pass
+
+        def enable_stream(self, *args):
+            pass
+
+    def fake_align(target):
+        alignment_targets.append(target)
+        return SimpleNamespace()
+
+    fake_rs = SimpleNamespace(
+        stream=SimpleNamespace(color="color", depth="depth"),
+        format=SimpleNamespace(bgr8="bgr8", z16="z16"),
+        pipeline=FakePipeline,
+        config=FakeConfig,
+        align=fake_align,
+    )
+    monkeypatch.setitem(sys.modules, "pyrealsense2", fake_rs)
+
+    from tools.g1_vision_bridge.publisher_realsense import RealSenseRgbdCamera
+
+    camera = RealSenseRgbdCamera(serial=None, width=640, height=480, fps=30)
+
+    assert alignment_targets == ["depth"]
+    assert requested_streams == ["depth"]
+    assert np.allclose(
+        camera.intrinsics,
+        [[400.0, 0.0, 319.0], [0.0, 401.0, 239.0], [0.0, 0.0, 1.0]],
+    )
+
+
 def test_build_frame_converts_to_capx_observation_with_pose_from_matrix() -> None:
     from tools.g1_vision_bridge.protocol import build_frame, frame_to_capx_observation
 

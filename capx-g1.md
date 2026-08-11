@@ -125,31 +125,49 @@ python g1_gym_deploy/scripts/deploy_policy.py
 
 按 OpenHomie 提示完成 G1 站立。确认 Gateway 收到下肢命令后，再启动上肢抓取。
 
-### 终端 3：启动 G1 图像桥接和 SAM3 viewer
-export NO_PROXY=127.0.0.1,localhost,192.168.123.0/24
-export no_proxy=127.0.0.1,localhost,192.168.123.0/24
-先启动图像服务。此时 CaP-X launch 还没有开启 9000 observation server，所以会看到 `Waiting for 127.0.0.1:9000`，这是正常的；终端 4 启动后会自动连上。
+### G1 机载相机服务：官方出厂标定 RGB-D 对齐
+
+真实抓取不再使用未携带标定元数据的 5555 ZMQ 图像。先在 G1 机载电脑启动
+`publisher_realsense.py`（也可以配置成开机常驻服务）：
+
+```bash
+cd /path/to/cap-x
+
+python tools/g1_vision_bridge/publisher_realsense.py \
+  --source realsense \
+  --bind-host 0.0.0.0 \
+  --port 9100 \
+  --width 640 \
+  --height 480 \
+  --fps 30 \
+  --extrinsics-yaml env_configs/g1/g1_d435_depth_optical_extrinsics_torso.yaml
+```
+
+日志必须出现 `RealSense factory alignment: RGB -> depth optical frame`。该进程通过
+RealSense SDK 读取本机设备的出厂标定，把 RGB 对齐到 depth frame，并随帧发送对应的 depth K；
+不再手工输入 RGB↔depth 标定。
+
+### 终端 3：转发官方对齐的 RGB-D
+
+先确认 `ip route get 192.168.123.164` 使用当前机器人网口。此时终端 4 尚未开启 9000，
+所以看到 `Waiting for 127.0.0.1:9000` 是正常的；终端 4 启动后会自动连接。
 
 ```bash
 cd /home/peilab/development/cap-x
 source .venv/bin/activate
 
-uv run --no-sync --active python tools/g1_vision_bridge/client_zmq_to_capx.py \
+export NO_PROXY=127.0.0.1,localhost,192.168.123.0/24
+export no_proxy=127.0.0.1,localhost,192.168.123.0/24
+
+uv run --no-sync --active python tools/g1_vision_bridge/client_to_capx.py \
   --robot-host 192.168.123.164 \
-  --robot-port 5555 \
-  --interface enx6c1ff7c1192d \
+  --robot-port 9100 \
   --capx-host 127.0.0.1 \
-  --capx-port 9000 \
-  --intrinsics-yaml env_configs/g1/g1_d435_depth_640x480_intrinsics.yaml \
-  --extrinsics-yaml env_configs/g1/g1_d435_depth_optical_extrinsics_torso.yaml \
-  --viewer \
-  --viewer-port 9010 \
-  --viewer-sam3 \
-  --viewer-sam3-prompt "plastic water bottle" \
-  --viewer-sam3-url http://127.0.0.1:8114
+  --capx-port 9000
 ```
 
-Viewer 地址：`http://127.0.0.1:9010/`。按 `R` 可以重新抓取最新图像、重新跑 SAM3，并显示新的抓取点位。
+SAM3 仍由终端 4 的 8114 服务执行；分割弹窗和抓取点云调试文件由
+`sam3_mask_popup` / `grasp_debug_visualization` 输出。
 
 ### 终端 4：启动 CaP-X 抓取流程
 

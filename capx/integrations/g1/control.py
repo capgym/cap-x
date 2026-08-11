@@ -9,12 +9,18 @@ from scipy.spatial.transform import Rotation as SciRotation
 from capx.envs.base import BaseEnv
 from capx.integrations.franka.control import FrankaControlApi
 from capx.integrations.g1.grasp import (
+    DEFAULT_PINCH_SHORT_APPROACH_DISTANCE_M,
+    DEFAULT_TABLE_HIGH_CLEARANCE_M,
+    DEFAULT_TARGET_HIGH_CLEARANCE_M,
+    DEFAULT_TARGET_TABLE_CLEARANCE_M,
     FRONT_POLICY_QUATERNION_WXYZ,
+    closed_pinch_center_offset,
+    estimate_table_height_at_target,
     front_policy_pinch_target_pose,
     front_pregrasp_pinch_center_pose,
+    front_safe_approach_waypoints,
     palm_pose_from_pinch_center_pose,
     remove_legacy_grasp_local_z_offset,
-    closed_pinch_center_offset,
 )
 from capx.integrations.g1.sdk import (
     G1_ARM_DUAL_CFG_SLICE_BY_SIDE,
@@ -27,6 +33,7 @@ from capx.integrations.g1.sdk import (
     dex3_grasp_joints,
     normalize_g1_arm_side,
 )
+from capx.utils.depth_utils import depth_to_pointcloud
 
 
 class G1RealControlApi(FrankaControlApi):
@@ -54,6 +61,21 @@ class G1RealControlApi(FrankaControlApi):
             real=True,
             debug=debug,
         )
+        self._table_estimation_enabled = bool(getattr(env, "table_estimation_enabled", True))
+        self._table_estimation_required = bool(getattr(env, "table_estimation_required", True))
+        self._table_high_clearance_m = float(
+            getattr(env, "table_high_clearance_m", DEFAULT_TABLE_HIGH_CLEARANCE_M)
+        )
+        self._target_high_clearance_m = float(
+            getattr(env, "target_high_clearance_m", DEFAULT_TARGET_HIGH_CLEARANCE_M)
+        )
+        self._target_table_clearance_m = float(
+            getattr(env, "target_table_clearance_m", DEFAULT_TARGET_TABLE_CLEARANCE_M)
+        )
+        self._short_approach_distance_m = float(
+            getattr(env, "short_approach_distance_m", DEFAULT_PINCH_SHORT_APPROACH_DISTANCE_M)
+        )
+        self._last_table_height_m: float | None = None
 
     @property
     def _active_arm_side(self) -> str:
@@ -83,7 +105,9 @@ class G1RealControlApi(FrankaControlApi):
 
     def _current_joints(self) -> np.ndarray:
         if hasattr(self._env, "get_current_arm_joints"):
-            return as_g1_arm_joints(self._env.get_current_arm_joints(), arm_side=self._active_arm_side).copy()
+            return as_g1_arm_joints(
+                self._env.get_current_arm_joints(), arm_side=self._active_arm_side
+            ).copy()
         get_observation = getattr(self._env, "get_observation", None)
         if not callable(get_observation):
             return np.zeros(G1_NUM_ARM_JOINTS, dtype=np.float64)
@@ -132,7 +156,9 @@ class G1RealControlApi(FrankaControlApi):
             )
         except Exception as exc:
             pos_str = np.array2string(np.asarray(position), precision=4, suppress_small=True)
-            quat_str = np.array2string(np.asarray(quaternion_wxyz), precision=4, suppress_small=True)
+            quat_str = np.array2string(
+                np.asarray(quaternion_wxyz), precision=4, suppress_small=True
+            )
             raise RuntimeError(
                 f"G1 PyRoKi IK failed for position={pos_str}, quaternion_wxyz={quat_str}. {exc}"
             ) from exc
@@ -167,8 +193,53 @@ class G1RealControlApi(FrankaControlApi):
         rot = SciRotation.from_quat([quat_wxyz[1], quat_wxyz[2], quat_wxyz[3], quat_wxyz[0]])
         return pose[:3].copy(), rot
 
+    def _latest_scene_points_world(self) -> np.ndarray | None:
+        """Deproject the latest full metric depth image into the torso/world frame."""
+
+        env = getattr(self, "_env", None)
+        get_observation = getattr(env, "get_observation", None)
+        if not callable(get_observation):
+            return None
+        try:
+            obs = get_observation()
+            camera_obs = obs.get("robot0_robotview") if isinstance(obs, dict) else None
+            if not isinstance(camera_obs, dict):
+                return None
+            images = camera_obs.get("images")
+            if not isinstance(images, dict) or "depth" not in images:
+                return None
+            depth = np.asarray(images["depth"], dtype=np.float64)
+            if depth.ndim == 3 and depth.shape[2] == 1:
+                depth = depth[:, :, 0]
+            intrinsics = np.asarray(camera_obs["intrinsics"], dtype=np.float64)
+            points_camera = depth_to_pointcloud(
+                depth,
+                intrinsics,
+                subsample_factor=2,
+                depth_clip_range=(0.10, 3.0),
+            )
+            pose = np.asarray(camera_obs["pose"], dtype=np.float64).reshape(-1)
+            if pose.size < 7 or not np.isfinite(pose[:7]).all():
+                return None
+            quat_wxyz = pose[3:7]
+            quat_norm = float(np.linalg.norm(quat_wxyz))
+            if quat_norm <= 1e-12:
+                return None
+            quat_wxyz = quat_wxyz / quat_norm
+            rotation = SciRotation.from_quat(
+                [quat_wxyz[1], quat_wxyz[2], quat_wxyz[3], quat_wxyz[0]]
+            )
+            return self._camera_points_to_world(
+                points_camera,
+                (pose[:3].copy(), rotation),
+            )
+        except (KeyError, TypeError, ValueError):
+            return None
+
     @staticmethod
-    def _camera_points_to_world(points: Any, camera_to_world: tuple[np.ndarray, SciRotation] | None) -> np.ndarray | None:
+    def _camera_points_to_world(
+        points: Any, camera_to_world: tuple[np.ndarray, SciRotation] | None
+    ) -> np.ndarray | None:
         if points is None:
             return None
         arr = np.asarray(points, dtype=np.float64)
@@ -184,7 +255,9 @@ class G1RealControlApi(FrankaControlApi):
         return translation.reshape(1, 3) + rotation.apply(finite)
 
     @staticmethod
-    def _camera_transform_for_debug(camera_to_world: tuple[np.ndarray, SciRotation] | None) -> vtf.SE3:
+    def _camera_transform_for_debug(
+        camera_to_world: tuple[np.ndarray, SciRotation] | None,
+    ) -> vtf.SE3:
         if camera_to_world is None:
             return vtf.SE3.from_rotation_and_translation(
                 rotation=vtf.SO3(wxyz=np.asarray([1.0, 0.0, 0.0, 0.0])),
@@ -193,7 +266,9 @@ class G1RealControlApi(FrankaControlApi):
         translation, rotation = camera_to_world
         quat_xyzw = rotation.as_quat()
         return vtf.SE3.from_rotation_and_translation(
-            rotation=vtf.SO3(wxyz=np.asarray([quat_xyzw[3], quat_xyzw[0], quat_xyzw[1], quat_xyzw[2]])),
+            rotation=vtf.SO3(
+                wxyz=np.asarray([quat_xyzw[3], quat_xyzw[0], quat_xyzw[1], quat_xyzw[2]])
+            ),
             translation=translation,
         )
 
@@ -232,19 +307,47 @@ class G1RealControlApi(FrankaControlApi):
             and preserves the network grasp rotation.
         """
 
-        self._log_step("sample_grasp_center_pose", f"Planning front-policy pinch target for **'{object_name}'**.")
+        self._log_step(
+            "sample_grasp_center_pose",
+            f"Planning front-policy pinch target for **'{object_name}'**.",
+        )
         palm_pos, quat_wxyz = FrankaControlApi.sample_grasp_pose(self, object_name)
         fallback_center_pos = remove_legacy_grasp_local_z_offset(palm_pos, quat_wxyz)
         camera_to_world = self._latest_camera_to_world()
         env = getattr(self, "_env", None)
-        visual_points_world = self._camera_points_to_world(getattr(env, "cube_points", None), camera_to_world)
-        contact_points_world = self._camera_points_to_world(self._best_contact_points_camera(), camera_to_world)
+        visual_points_world = self._camera_points_to_world(
+            getattr(env, "cube_points", None), camera_to_world
+        )
+        contact_points_world = self._camera_points_to_world(
+            self._best_contact_points_camera(), camera_to_world
+        )
         target_pos, target_quat = front_policy_pinch_target_pose(
             fallback_center_pos,
             quat_wxyz,
             visual_points=visual_points_world,
             contact_points=contact_points_world,
         )
+        self._last_table_height_m = None
+        if getattr(self, "_table_estimation_enabled", False):
+            scene_points_world = self._latest_scene_points_world()
+            if scene_points_world is not None:
+                self._last_table_height_m = estimate_table_height_at_target(
+                    scene_points_world,
+                    target_position=target_pos,
+                    object_points=visual_points_world,
+                )
+            if self._last_table_height_m is None:
+                print(
+                    "[g1-real] table estimate unavailable; the configured fail-closed "
+                    "guard will prevent a real table approach."
+                )
+            else:
+                clearance = float(target_pos[2] - self._last_table_height_m)
+                print(
+                    f"[g1-real] estimated table z={self._last_table_height_m:.4f} m, "
+                    f"pinch-target clearance={clearance:.4f} m"
+                )
+
         env = getattr(self, "_env", None)
         if getattr(env, "cube_points", None) is not None:
             cam_tf = self._camera_transform_for_debug(camera_to_world)
@@ -254,7 +357,7 @@ class G1RealControlApi(FrankaControlApi):
             )
             self._save_grasp_debug_visualization(
                 object_name=object_name,
-                points_camera=getattr(env, "cube_points"),
+                points_camera=env.cube_points,
                 colors=getattr(env, "cube_color", np.empty((0, 3), dtype=np.uint8)),
                 camera_tf_world=cam_tf,
                 grasp_tf_world=target_tf,
@@ -305,6 +408,62 @@ class G1RealControlApi(FrankaControlApi):
         )
         self.goto_pose(palm_pos, palm_quat, z_approach=z_approach)
         self._log_step_update(text="Closed Dex3 pinch center motion complete.")
+
+    def move_pinch_center_cartesian_line(
+        self,
+        start_position: np.ndarray,
+        end_position: np.ndarray,
+        quaternion_wxyz: np.ndarray | None = None,
+        *,
+        num_waypoints: int = 25,
+        dt: float | None = None,
+        max_joint_step: float | None = None,
+        hold_final_seconds: float = 0.2,
+    ) -> None:
+        """Stream a straight 3D pinch-center segment through dense Cartesian IK."""
+
+        start = np.asarray(start_position, dtype=np.float64).reshape(3)
+        end = np.asarray(end_position, dtype=np.float64).reshape(3)
+        quat = (
+            FRONT_POLICY_QUATERNION_WXYZ.copy()
+            if quaternion_wxyz is None
+            else np.asarray(quaternion_wxyz, dtype=np.float64).reshape(4)
+        )
+        steps = max(1, int(num_waypoints))
+        waypoints = np.linspace(start, end, steps + 1, dtype=np.float64)[1:]
+        start_str = np.array2string(start, precision=4, suppress_small=True)
+        end_str = np.array2string(end, precision=4, suppress_small=True)
+        self._log_step(
+            "move_pinch_center_cartesian_line",
+            f"Streaming pinch-center line from {start_str} to {end_str} in {steps} IK waypoints.",
+        )
+
+        trajectory = []
+        pinch_offset = self._closed_pinch_center_offset()
+        for waypoint in waypoints:
+            palm_pos, palm_quat = palm_pose_from_pinch_center_pose(
+                waypoint,
+                quat,
+                pinch_center_offset=pinch_offset,
+            )
+            palm_rot = SciRotation.from_quat(
+                [palm_quat[1], palm_quat[2], palm_quat[3], palm_quat[0]]
+            )
+            palm_target = palm_pos + palm_rot.apply(self._TCP_OFFSET)
+            trajectory.append(self._solve_ik(palm_target, palm_quat))
+
+        stream = getattr(self._env, "execute_joint_trajectory_streaming", None)
+        if not callable(stream):
+            raise RuntimeError(
+                "The current G1 environment does not expose joint trajectory streaming."
+            )
+        stream(
+            np.asarray(trajectory, dtype=np.float64),
+            dt=dt,
+            max_joint_step=max_joint_step,
+            hold_final_seconds=hold_final_seconds,
+        )
+        self._log_step_update(text="Cartesian closed Dex3 pinch-center segment complete.")
 
     def move_pinch_center_horizontal_line(
         self,
@@ -370,13 +529,17 @@ class G1RealControlApi(FrankaControlApi):
                 quat,
                 pinch_center_offset=pinch_offset,
             )
-            palm_rot = SciRotation.from_quat([palm_quat[1], palm_quat[2], palm_quat[3], palm_quat[0]])
+            palm_rot = SciRotation.from_quat(
+                [palm_quat[1], palm_quat[2], palm_quat[3], palm_quat[0]]
+            )
             palm_target = palm_pos + palm_rot.apply(self._TCP_OFFSET)
             trajectory.append(self._solve_ik(palm_target, palm_quat))
 
         stream = getattr(self._env, "execute_joint_trajectory_streaming", None)
         if not callable(stream):
-            raise RuntimeError("The current G1 environment does not expose joint trajectory streaming.")
+            raise RuntimeError(
+                "The current G1 environment does not expose joint trajectory streaming."
+            )
         stream(
             np.asarray(trajectory, dtype=np.float64),
             dt=dt,
@@ -384,6 +547,26 @@ class G1RealControlApi(FrankaControlApi):
             hold_final_seconds=hold_final_seconds,
         )
         self._log_step_update(text="Horizontal closed Dex3 pinch-center approach complete.")
+
+    def _table_height_for_approach(self, position: np.ndarray) -> float:
+        table_height = getattr(self, "_last_table_height_m", None)
+        if table_height is None:
+            if getattr(self, "_table_estimation_required", True):
+                raise RuntimeError(
+                    "G1 table approach aborted before motion: no stable table plane "
+                    "was estimated for the current grasp sample."
+                )
+            return float(position[2] - getattr(self, "_target_high_clearance_m", 0.12))
+
+        target_clearance = float(position[2] - table_height)
+        minimum = float(getattr(self, "_target_table_clearance_m", 0.025))
+        if target_clearance < minimum:
+            raise RuntimeError(
+                "G1 table approach aborted before motion: pinch target is only "
+                f"{target_clearance:.4f} m above the estimated table; "
+                f"required minimum is {minimum:.4f} m."
+            )
+        return float(table_height)
 
     def move_to_pinch_pregrasp(
         self,
@@ -397,10 +580,48 @@ class G1RealControlApi(FrankaControlApi):
             position: (3,) final visual grasp center XYZ in the robot/world frame.
             quaternion_wxyz: (4,) final grasp orientation in WXYZ order. If None,
                 the G1 fixed vertical front-palm orientation is used.
-            pregrasp_distance: Meters to retreat along world -X before the final
-                grasp. Default is 0.20 m. This mirrors the front-table pregrasp
-                strategy used by the IsaacLab G1 manipulation code.
+            pregrasp_distance: World -X distance to the elevated far waypoint.
+                The final low horizontal segment uses the separately configured
+                short_approach_distance_m (0.06 m by default).
         """
+
+        if getattr(self, "_table_estimation_enabled", False):
+            pos = np.asarray(position, dtype=np.float64).reshape(3)
+            table_height = self._table_height_for_approach(pos)
+            high_far, high_near, low_near = front_safe_approach_waypoints(
+                pos,
+                table_height=table_height,
+                pregrasp_distance=pregrasp_distance,
+                short_approach_distance=getattr(
+                    self,
+                    "_short_approach_distance_m",
+                    DEFAULT_PINCH_SHORT_APPROACH_DISTANCE_M,
+                ),
+                table_clearance=getattr(
+                    self,
+                    "_table_high_clearance_m",
+                    DEFAULT_TABLE_HIGH_CLEARANCE_M,
+                ),
+                target_clearance=getattr(
+                    self,
+                    "_target_high_clearance_m",
+                    DEFAULT_TARGET_HIGH_CLEARANCE_M,
+                ),
+            )
+            quat = (
+                FRONT_POLICY_QUATERNION_WXYZ.copy()
+                if quaternion_wxyz is None
+                else np.asarray(quaternion_wxyz, dtype=np.float64).reshape(4)
+            )
+            self._log_step(
+                "move_to_pinch_pregrasp",
+                "Moving through elevated far/near waypoints, then descending "
+                "vertically to the short front pregrasp.",
+            )
+            self.move_pinch_center_to_pose(high_far, quat)
+            self.move_pinch_center_cartesian_line(high_far, high_near, quat)
+            self.move_pinch_center_cartesian_line(high_near, low_near, quat)
+            return
 
         pre_pos, pre_quat = front_pregrasp_pinch_center_pose(
             position,
@@ -429,7 +650,8 @@ class G1RealControlApi(FrankaControlApi):
             position: (3,) visual grasp center XYZ in the robot/world frame.
             quaternion_wxyz: Ignored by the front-grasp policy. The wrist/palm
                 orientation is fixed to the G1 vertical front-palm pose.
-            pregrasp_distance: Front pregrasp retreat in world -X; default is 0.20 m. Set to 0 to skip.
+            pregrasp_distance: World -X distance to the elevated far waypoint;
+                default is 0.20 m. Set to 0 to skip the approach trajectory.
             lift_dz: World +Z lift distance after closing the hand. Set to 0 to skip.
             trigger: Dex3 trigger value. 1 closes thumb+index for a 2D pinch.
             squeeze: Dex3 squeeze value. 1 closes thumb+middle. trigger=1 and
@@ -439,8 +661,8 @@ class G1RealControlApi(FrankaControlApi):
                 IsaacLab direct-wrist execution strategy; the hand opens again
                 before moving to the final grasp center.
             approach_waypoints: Number of Cartesian IK waypoints for the streamed
-                horizontal pregrasp-to-grasp approach. Default 50 reduces
-                end-effector sag from joint-space interpolation.
+                short final horizontal approach. Default 50 reduces end-effector
+                sag from joint-space interpolation.
 
         Example:
             pos, quat = sample_grasp_center_pose("plastic water bottle")
@@ -450,6 +672,9 @@ class G1RealControlApi(FrankaControlApi):
         pos = np.asarray(position, dtype=np.float64).reshape(3)
         del quaternion_wxyz
         quat = FRONT_POLICY_QUATERNION_WXYZ.copy()
+        table_height: float | None = None
+        if getattr(self, "_table_estimation_enabled", False):
+            table_height = self._table_height_for_approach(pos)
         pre_pos: np.ndarray | None = None
         if pregrasp_distance > 0.0:
             pre_pos, _ = front_pregrasp_pinch_center_pose(
@@ -457,6 +682,28 @@ class G1RealControlApi(FrankaControlApi):
                 quat,
                 pregrasp_distance=pregrasp_distance,
             )
+            if table_height is not None:
+                _, _, pre_pos = front_safe_approach_waypoints(
+                    pos,
+                    table_height=table_height,
+                    pregrasp_distance=pregrasp_distance,
+                    short_approach_distance=getattr(
+                        self,
+                        "_short_approach_distance_m",
+                        DEFAULT_PINCH_SHORT_APPROACH_DISTANCE_M,
+                    ),
+                    table_clearance=getattr(
+                        self,
+                        "_table_high_clearance_m",
+                        DEFAULT_TABLE_HIGH_CLEARANCE_M,
+                    ),
+                    target_clearance=getattr(
+                        self,
+                        "_target_high_clearance_m",
+                        DEFAULT_TARGET_HIGH_CLEARANCE_M,
+                    ),
+                )
+
             if close_during_pregrasp:
                 self.set_gripper_trigger_squeeze(trigger=trigger, squeeze=squeeze)
             self.move_to_pinch_pregrasp(pos, quat, pregrasp_distance=pregrasp_distance)
@@ -584,7 +831,9 @@ class G1RealControlApi(FrankaControlApi):
             choose between index pinch, middle pinch, or full three-finger grasp.
         """
 
-        target = dex3_grasp_joints(trigger=trigger, squeeze=squeeze, hand_side=self._active_arm_side)
+        target = dex3_grasp_joints(
+            trigger=trigger, squeeze=squeeze, hand_side=self._active_arm_side
+        )
         target_str = np.array2string(target, precision=4, suppress_small=True)
         self._log_step(
             "set_gripper_trigger_squeeze",
@@ -608,7 +857,9 @@ class G1RealControlApi(FrankaControlApi):
         """
 
         if not hasattr(self._env, "move_hand_to_joints_blocking"):
-            raise RuntimeError("The current G1 environment does not expose Dex3 hand joint control.")
+            raise RuntimeError(
+                "The current G1 environment does not expose Dex3 hand joint control."
+            )
         self._env.move_hand_to_joints_blocking(
             as_g1_dex3_hand_joints(joints, hand_side=self._active_arm_side)
         )

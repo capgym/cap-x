@@ -1335,6 +1335,54 @@ def test_g1_front_policy_pinch_target_uses_contact_xy_visual_z_and_vertical_fron
     assert np.allclose(rot.apply([0.0, 0.0, 1.0]), [0.0, 0.0, 1.0])
 
 
+def test_g1_table_height_estimator_fits_local_plane_and_ignores_object_points() -> None:
+    from capx.integrations.g1.grasp import estimate_table_height_at_target
+
+    rng = np.random.default_rng(7)
+    target = np.array([0.50, -0.05, 0.02], dtype=np.float64)
+    table_xy = rng.uniform([-0.30, -0.30], [0.30, 0.30], size=(3000, 2))
+    table_z = -0.12 + 0.01 * table_xy[:, 0] - 0.015 * table_xy[:, 1]
+    table = np.column_stack(
+        [target[0] + table_xy[:, 0], target[1] + table_xy[:, 1], table_z]
+    )
+    bottle = rng.normal(
+        loc=[target[0], target[1], target[2]],
+        scale=[0.025, 0.025, 0.045],
+        size=(500, 3),
+    )
+    outliers = rng.uniform([0.15, -0.4, -0.3], [0.85, 0.3, 0.08], size=(250, 3))
+
+    estimated = estimate_table_height_at_target(
+        np.vstack([table, bottle, outliers]),
+        target_position=target,
+        object_points=bottle,
+    )
+
+    assert estimated is not None
+    assert estimated == pytest.approx(-0.12, abs=0.008)
+
+
+def test_g1_front_safe_approach_waypoints_elevate_descend_then_leave_short_line() -> None:
+    from capx.integrations.g1.grasp import front_safe_approach_waypoints
+
+    target = np.array([0.50, -0.05, -0.02], dtype=np.float64)
+    high_far, high_near, low_near = front_safe_approach_waypoints(
+        target,
+        table_height=-0.12,
+        pregrasp_distance=0.20,
+        short_approach_distance=0.06,
+        table_clearance=0.20,
+        target_clearance=0.12,
+    )
+
+    assert np.allclose(high_far, [0.30, -0.05, 0.10])
+    assert np.allclose(high_near, [0.44, -0.05, 0.10])
+    assert np.allclose(low_near, [0.44, -0.05, -0.02])
+    assert high_far[2] == high_near[2]
+    assert high_near[0] == low_near[0]
+    assert target[0] - low_near[0] == pytest.approx(0.06)
+
+
 def test_g1_real_control_api_sample_grasp_center_pose_uses_front_policy_target(monkeypatch) -> None:
     from capx.integrations.franka.control import FrankaControlApi
     from capx.integrations.g1.control import G1RealControlApi
@@ -1485,6 +1533,98 @@ def test_g1_real_control_api_grasp_at_pinch_center_uses_single_streamed_horizont
     assert np.allclose(line_calls[0][0], [0.2, 0.2, 0.3])
     assert np.allclose(line_calls[0][1], target)
     assert np.allclose(line_calls[0][2], [1.0, 0.0, 0.0, 0.0])
+
+
+def test_g1_real_control_api_grasp_uses_high_transit_descent_and_short_approach() -> None:
+    from capx.integrations.g1.control import G1RealControlApi
+
+    api = G1RealControlApi.__new__(G1RealControlApi)
+    api._webui_enabled = False
+    api._table_estimation_enabled = True
+    api._last_table_height_m = -0.12
+    api._table_estimation_required = True
+    api._table_high_clearance_m = 0.20
+    api._target_high_clearance_m = 0.12
+    api._target_table_clearance_m = 0.025
+    api._short_approach_distance_m = 0.06
+    events: list[tuple[str, np.ndarray, np.ndarray | None]] = []
+
+    def fake_hand(trigger: float, squeeze: float) -> None:
+        pass
+
+    def fake_move(position, quaternion_wxyz=None, z_approach=0.0) -> None:
+        events.append(("move", np.asarray(position, dtype=np.float64).copy(), None))
+
+    def fake_cartesian(start_position, end_position, quaternion_wxyz=None, **kwargs) -> None:
+        events.append(
+            (
+                "cartesian",
+                np.asarray(start_position, dtype=np.float64).copy(),
+                np.asarray(end_position, dtype=np.float64).copy(),
+            )
+        )
+
+    def fake_horizontal(start_position, end_position, quaternion_wxyz=None, **kwargs) -> None:
+        events.append(
+            (
+                "horizontal",
+                np.asarray(start_position, dtype=np.float64).copy(),
+                np.asarray(end_position, dtype=np.float64).copy(),
+            )
+        )
+
+    api.set_gripper_trigger_squeeze = fake_hand
+    api.move_pinch_center_to_pose = fake_move
+    api.move_pinch_center_cartesian_line = fake_cartesian
+    api.move_pinch_center_horizontal_line = fake_horizontal
+
+    target = np.array([0.50, -0.05, -0.02], dtype=np.float64)
+    api.grasp_at_pinch_center(target, pregrasp_distance=0.20, lift_dz=0.0)
+
+    assert [event[0] for event in events] == [
+        "move",
+        "cartesian",
+        "cartesian",
+        "horizontal",
+    ]
+    assert np.allclose(events[0][1], [0.30, -0.05, 0.10])
+    assert np.allclose(events[1][1], [0.30, -0.05, 0.10])
+    assert np.allclose(events[1][2], [0.44, -0.05, 0.10])
+    assert np.allclose(events[2][1], [0.44, -0.05, 0.10])
+    assert np.allclose(events[2][2], [0.44, -0.05, -0.02])
+    assert np.allclose(events[3][1], [0.44, -0.05, -0.02])
+    assert np.allclose(events[3][2], target)
+
+
+def test_g1_real_control_api_aborts_before_motion_without_table_estimate() -> None:
+    from capx.integrations.g1.control import G1RealControlApi
+
+    api = G1RealControlApi.__new__(G1RealControlApi)
+    api._webui_enabled = False
+    api._table_estimation_enabled = True
+    api._table_estimation_required = True
+    api._last_table_height_m = None
+    events: list[str] = []
+
+    def unexpected_call(*args, **kwargs) -> None:
+        events.append("called")
+
+    api.set_gripper_trigger_squeeze = unexpected_call
+    api.move_pinch_center_to_pose = unexpected_call
+    api.move_pinch_center_cartesian_line = unexpected_call
+    api.move_pinch_center_horizontal_line = unexpected_call
+
+    with pytest.raises(RuntimeError, match="aborted before motion"):
+        api.grasp_at_pinch_center(
+            np.array([0.50, -0.05, -0.02]), pregrasp_distance=0.20
+        )
+
+    with pytest.raises(RuntimeError, match="aborted before motion"):
+        api.grasp_at_pinch_center(
+            np.array([0.50, -0.05, -0.02]), pregrasp_distance=0.0
+        )
+
+    assert events == []
 
 
 def test_g1_real_control_api_horizontal_pinch_line_keeps_z_and_streams_once() -> None:

@@ -8,9 +8,9 @@ Key rules:
 - Use the right Dex3 hand as the gripper. Available hand APIs: set_gripper_trigger_squeeze(trigger, squeeze), open_gripper(), close_gripper(), close_index_pinch(), close_middle_pinch(), and move_hand_joints(joints).
 - Dex3 trigger/squeeze semantics: trigger closes thumb+index for a 2D pinch; squeeze closes thumb+middle; trigger=1 and squeeze=1 closes thumb/index/middle for a bottle grasp.
 - Treat the arm as a 7-DoF single-arm robot. Do not distinguish left and right arms in code.
-- Prefer sample_grasp_center_pose("plastic water bottle") and grasp_at_pinch_center(pos, quat). These APIs use the Junhao-style front policy: contact/visual center as pinch target, fixed vertical front-palm rotation, Dex3 closed-pinch offset converted to the palm IK target, and a rate-limited streamed horizontal pregrasp-to-grasp approach that keeps Z stable. Do not send this target directly to goto_pose().
-- For low-level manual control, use move_to_pinch_pregrasp(pos, quat), set_gripper_trigger_squeeze(0, 0), pre_pos = pos - np.array([0.20, 0.0, 0.0]), move_pinch_center_horizontal_line(pre_pos, pos, quat), set_gripper_trigger_squeeze(1, 1), then lift with move_pinch_center_to_pose(lift_pos, quat).
-- For table-top grasps, the pinch pregrasp retreats 0.20m along world -X. The pregrasp-to-grasp segment should be one rate-limited streamed joint trajectory generated from horizontal Cartesian IK waypoints, not multiple blocking move_to_joints/goto_pose calls.
+- Prefer sample_grasp_center_pose("plastic water bottle") and grasp_at_pinch_center(pos, quat). These APIs preserve the Junhao-style front policy: contact/visual center as pinch target and fixed vertical front-palm rotation. They estimate a local table plane, use an elevated transit, descend vertically near the object, and leave only a 0.06m short final horizontal approach. Do not send this target directly to goto_pose().
+- For low-level manual control, call move_to_pinch_pregrasp(pos, quat), open the hand, use move_pinch_center_horizontal_line() only from the returned short front approach point to pos, close the hand, and then lift with move_pinch_center_to_pose(lift_pos, quat).
+- Do not bypass table estimation or invent a new target Z. If a stable local table plane is unavailable or the target is too close to it, the real grasp must stop before arm motion.
 - After the grasp/lift completes, call move_to_pregrasp_side_pose() so the final arm target is the configured right-side lifted pose.
 - Write ONLY executable Python code (no code fences). Import numpy if needed.
 """

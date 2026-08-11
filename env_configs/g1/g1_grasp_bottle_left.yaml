@@ -25,6 +25,13 @@ env:
       grasp_debug_visualization: true
       grasp_debug_output_dir: outputs/g1_grasp_bottle_left/grasp_debug
       grasp_debug_approach_distance: 0.1
+      # Estimate the local tabletop from aligned RGB-D before any grasp motion.
+      table_estimation_enabled: true
+      table_estimation_required: true
+      table_high_clearance_m: 0.20
+      target_high_clearance_m: 0.12
+      target_table_clearance_m: 0.025
+      short_approach_distance_m: 0.06
       write_timeout: 2.0
       enable_dex3: true
       dex3_hand_side: left

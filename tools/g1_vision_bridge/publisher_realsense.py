@@ -66,15 +66,19 @@ class RealSenseRgbdCamera:
         config.enable_stream(rs.stream.depth, width, height, rs.format.z16, fps)
 
         profile = self.pipeline.start(config)
-        self.align = rs.align(rs.stream.color)
+        # Use librealsense's per-device factory calibration to resample RGB into
+        # the depth optical frame. This keeps RGB, metric depth, K, and the
+        # configured T_torso_depth pose in one coordinate frame.
+        self.align = rs.align(rs.stream.depth)
         depth_sensor = profile.get_device().first_depth_sensor()
         self.depth_scale = float(depth_sensor.get_depth_scale())
-        color_stream = profile.get_stream(rs.stream.color).as_video_stream_profile()
-        intr = color_stream.get_intrinsics()
+        depth_stream = profile.get_stream(rs.stream.depth).as_video_stream_profile()
+        intr = depth_stream.get_intrinsics()
         self.intrinsics = np.array(
             [[intr.fx, 0.0, intr.ppx], [0.0, intr.fy, intr.ppy], [0.0, 0.0, 1.0]],
             dtype=np.float32,
         )
+        print("[g1-vision-publisher] RealSense factory alignment: RGB -> depth optical frame")
 
     def frames(self) -> Iterator[CameraSample]:
         while True:
@@ -161,4 +165,3 @@ def parse_args() -> argparse.Namespace:
 
 if __name__ == "__main__":
     run(parse_args())
-

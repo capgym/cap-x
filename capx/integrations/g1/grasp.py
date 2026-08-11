@@ -1,20 +1,25 @@
 from __future__ import annotations
 
-from functools import lru_cache
 import math
-from pathlib import Path
 import struct
 import xml.etree.ElementTree as ET
+from functools import lru_cache
+from pathlib import Path
 
 import numpy as np
 from scipy.spatial.transform import Rotation as SciRotation
 
 from capx.integrations.g1.sdk import dex3_grasp_joints, normalize_g1_arm_side
 
-
-DEFAULT_G1_WITH_HAND_URDF = Path(__file__).resolve().parents[3] / "env_configs/g1/g1_29dof_with_hand.urdf"
+DEFAULT_G1_WITH_HAND_URDF = (
+    Path(__file__).resolve().parents[3] / "env_configs/g1/g1_29dof_with_hand.urdf"
+)
 DEFAULT_PINCH_PREGRASP_DISTANCE_M = 0.20
 LEGACY_GRASP_LOCAL_Z_OFFSET_M = 0.12
+DEFAULT_PINCH_SHORT_APPROACH_DISTANCE_M = 0.06
+DEFAULT_TABLE_HIGH_CLEARANCE_M = 0.20
+DEFAULT_TARGET_HIGH_CLEARANCE_M = 0.12
+DEFAULT_TARGET_TABLE_CLEARANCE_M = 0.025
 # Fixed front-table palm orientation for G1 Dex3 grasps. This maps the palm local
 # +X axis to world +X so the fingers point forward, local +Y to world +Y so the
 # thumb side stays on the robot left, and local +Z to world +Z. The palm XZ
@@ -29,6 +34,7 @@ _DISTAL_AXIS_BY_LINK_KEY = {
 }
 _DISTAL_FALLBACK_LENGTH_M = 0.0458
 _TIP_MESH_CAP_M = 0.004
+
 
 def closed_pinch_center_offset(
     *,
@@ -58,7 +64,9 @@ def closed_pinch_center_offset(
 
 
 @lru_cache(maxsize=16)
-def _cached_closed_pinch_center_offset(hand: str, link_frame: str, urdf_path: str) -> tuple[float, float, float]:
+def _cached_closed_pinch_center_offset(
+    hand: str, link_frame: str, urdf_path: str
+) -> tuple[float, float, float]:
     path = Path(urdf_path)
     root = ET.parse(path).getroot()
     transforms = _link_transforms_from(
@@ -76,6 +84,7 @@ def _cached_closed_pinch_center_offset(hand: str, link_frame: str, urdf_path: st
         tip_points.append((transforms[link_name] @ tip_h)[:3])
     center = np.mean(np.stack(tip_points, axis=0), axis=0)
     return tuple(float(item) for item in center)
+
 
 def palm_pose_from_pinch_center_pose(
     position: np.ndarray,
@@ -110,6 +119,7 @@ def palm_pose_from_pinch_center_pose(
     t_palm_pinch[:3, 3] = offset
     t_world_palm = t_world_pinch @ invert_transform(t_palm_pinch)
     return matrix_to_pose(t_world_palm)
+
 
 def front_policy_pinch_target_pose(
     position: np.ndarray,
@@ -154,6 +164,7 @@ def front_policy_pinch_target_pose(
 
     return target, FRONT_POLICY_QUATERNION_WXYZ.copy()
 
+
 def front_pregrasp_pinch_center_pose(
     position: np.ndarray,
     quaternion_wxyz: np.ndarray | None = None,
@@ -183,6 +194,145 @@ def front_pregrasp_pinch_center_pose(
     pregrasp = pos - np.asarray([float(pregrasp_distance), 0.0, 0.0], dtype=np.float64)
     return pregrasp, quat
 
+
+def front_safe_approach_waypoints(
+    position: np.ndarray,
+    *,
+    table_height: float,
+    pregrasp_distance: float = DEFAULT_PINCH_PREGRASP_DISTANCE_M,
+    short_approach_distance: float = DEFAULT_PINCH_SHORT_APPROACH_DISTANCE_M,
+    table_clearance: float = DEFAULT_TABLE_HIGH_CLEARANCE_M,
+    target_clearance: float = DEFAULT_TARGET_HIGH_CLEARANCE_M,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Build elevated waypoints for a front table grasp.
+
+    The path first reaches a far waypoint at a safe height, moves horizontally
+    above the table, descends at the near-pregrasp XY, and leaves only a short
+    low horizontal segment to the final target.
+    """
+
+    pos = np.asarray(position, dtype=np.float64).reshape(3)
+    far = float(pregrasp_distance)
+    short = float(short_approach_distance)
+    if far <= 0.0:
+        raise ValueError("pregrasp_distance must be positive for a safe table approach.")
+    if short <= 0.0 or short > far:
+        raise ValueError("short_approach_distance must be in (0, pregrasp_distance].")
+    if not np.isfinite(table_height):
+        raise ValueError("table_height must be finite.")
+
+    safe_z = max(
+        float(table_height) + float(table_clearance),
+        float(pos[2]) + float(target_clearance),
+    )
+    high_far = pos + np.asarray([-far, 0.0, safe_z - pos[2]], dtype=np.float64)
+    high_near = pos + np.asarray([-short, 0.0, safe_z - pos[2]], dtype=np.float64)
+    low_near = pos - np.asarray([short, 0.0, 0.0], dtype=np.float64)
+    return high_far, high_near, low_near
+
+
+def estimate_table_height_at_target(
+    scene_points: np.ndarray,
+    *,
+    target_position: np.ndarray,
+    object_points: np.ndarray | None = None,
+    xy_radius: float = 0.35,
+    max_below_target: float = 0.40,
+    max_above_target: float = 0.04,
+    object_xy_margin: float = 0.025,
+    plane_distance_threshold: float = 0.008,
+    max_tilt_degrees: float = 25.0,
+    min_inliers: int = 150,
+    ransac_trials: int = 256,
+) -> float | None:
+    """Estimate local table height at a grasp target from a torso-frame point cloud.
+
+    A deterministic RANSAC fit searches for a near-horizontal plane around the
+    target. Points inside the segmented object's XY footprint are excluded so
+    the bottle surface does not become the selected plane.
+    """
+
+    points = _finite_points(scene_points)
+    if points is None:
+        return None
+    target = np.asarray(target_position, dtype=np.float64).reshape(3)
+    radius = float(xy_radius)
+    roi = (
+        (np.abs(points[:, 0] - target[0]) <= radius)
+        & (np.abs(points[:, 1] - target[1]) <= radius)
+        & (points[:, 2] >= target[2] - float(max_below_target))
+        & (points[:, 2] <= target[2] + float(max_above_target))
+    )
+
+    obj = _finite_points(object_points)
+    if obj is not None and obj.shape[0] >= 4:
+        x_lo, x_hi = np.percentile(obj[:, 0], [5.0, 95.0])
+        y_lo, y_hi = np.percentile(obj[:, 1], [5.0, 95.0])
+        margin = float(object_xy_margin)
+        inside_object_xy = (
+            (points[:, 0] >= x_lo - margin)
+            & (points[:, 0] <= x_hi + margin)
+            & (points[:, 1] >= y_lo - margin)
+            & (points[:, 1] <= y_hi + margin)
+        )
+        roi &= ~inside_object_xy
+
+    candidates = points[roi]
+    if candidates.shape[0] < max(3, int(min_inliers)):
+        return None
+    if candidates.shape[0] > 10000:
+        sample_idx = np.linspace(0, candidates.shape[0] - 1, 10000, dtype=np.int64)
+        candidates = candidates[sample_idx]
+
+    rng = np.random.default_rng(0)
+    min_normal_z = math.cos(math.radians(float(max_tilt_degrees)))
+    threshold = float(plane_distance_threshold)
+    best_inliers: np.ndarray | None = None
+    best_count = 0
+
+    for _ in range(max(1, int(ransac_trials))):
+        sample = candidates[rng.choice(candidates.shape[0], size=3, replace=False)]
+        normal = np.cross(sample[1] - sample[0], sample[2] - sample[0])
+        norm = float(np.linalg.norm(normal))
+        if norm <= 1e-10:
+            continue
+        normal /= norm
+        if normal[2] < 0.0:
+            normal = -normal
+        if normal[2] < min_normal_z:
+            continue
+        offset = -float(np.dot(normal, sample[0]))
+        plane_height = -(normal[0] * target[0] + normal[1] * target[1] + offset) / normal[2]
+        if not (
+            target[2] - float(max_below_target)
+            <= plane_height
+            <= target[2] + float(max_above_target)
+        ):
+            continue
+        inliers = np.abs(candidates @ normal + offset) <= threshold
+        count = int(np.count_nonzero(inliers))
+        if count > best_count:
+            best_count = count
+            best_inliers = inliers
+
+    if best_inliers is None or best_count < int(min_inliers):
+        return None
+
+    plane_points = candidates[best_inliers]
+    center = np.mean(plane_points, axis=0)
+    _, _, vh = np.linalg.svd(plane_points - center, full_matrices=False)
+    normal = vh[-1]
+    if normal[2] < 0.0:
+        normal = -normal
+    if normal[2] < min_normal_z:
+        return None
+    offset = -float(np.dot(normal, center))
+    residuals = np.abs(candidates @ normal + offset)
+    if int(np.count_nonzero(residuals <= threshold)) < int(min_inliers):
+        return None
+    return float(-(normal[0] * target[0] + normal[1] * target[1] + offset) / normal[2])
+
+
 def remove_legacy_grasp_local_z_offset(
     position: np.ndarray,
     quaternion_wxyz: np.ndarray,
@@ -205,6 +355,7 @@ def remove_legacy_grasp_local_z_offset(
     rot = rotation_from_wxyz(quaternion_wxyz)
     return pos - rot.apply(np.asarray([0.0, 0.0, float(distance)], dtype=np.float64))
 
+
 def _finite_points(points: np.ndarray | None) -> np.ndarray | None:
     if points is None:
         return None
@@ -217,11 +368,13 @@ def _finite_points(points: np.ndarray | None) -> np.ndarray | None:
         return None
     return finite
 
+
 def _finite_centroid(points: np.ndarray | None) -> np.ndarray | None:
     finite = _finite_points(points)
     if finite is None:
         return None
     return np.mean(finite, axis=0)
+
 
 def pose_to_matrix(position: np.ndarray, quaternion_wxyz: np.ndarray) -> np.ndarray:
     pos = np.asarray(position, dtype=np.float64).reshape(3)
@@ -231,11 +384,15 @@ def pose_to_matrix(position: np.ndarray, quaternion_wxyz: np.ndarray) -> np.ndar
     mat[:3, 3] = pos
     return mat
 
+
 def matrix_to_pose(matrix: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     mat = np.asarray(matrix, dtype=np.float64).reshape(4, 4)
     quat_xyzw = SciRotation.from_matrix(mat[:3, :3]).as_quat()
-    quat_wxyz = np.asarray([quat_xyzw[3], quat_xyzw[0], quat_xyzw[1], quat_xyzw[2]], dtype=np.float64)
+    quat_wxyz = np.asarray(
+        [quat_xyzw[3], quat_xyzw[0], quat_xyzw[1], quat_xyzw[2]], dtype=np.float64
+    )
     return mat[:3, 3].astype(np.float64).copy(), quat_wxyz
+
 
 def invert_transform(matrix: np.ndarray) -> np.ndarray:
     mat = np.asarray(matrix, dtype=np.float64).reshape(4, 4)
@@ -244,6 +401,7 @@ def invert_transform(matrix: np.ndarray) -> np.ndarray:
     inv[:3, 3] = -inv[:3, :3] @ mat[:3, 3]
     return inv
 
+
 def rotation_from_wxyz(quaternion_wxyz: np.ndarray) -> SciRotation:
     quat = np.asarray(quaternion_wxyz, dtype=np.float64).reshape(4)
     norm = float(np.linalg.norm(quat))
@@ -251,6 +409,7 @@ def rotation_from_wxyz(quaternion_wxyz: np.ndarray) -> SciRotation:
         raise ValueError("Quaternion norm must be non-zero.")
     quat = quat / norm
     return SciRotation.from_quat([quat[1], quat[2], quat[3], quat[0]])
+
 
 def _identity_quat_if_none(quaternion_wxyz: np.ndarray | None) -> np.ndarray:
     if quaternion_wxyz is None:
@@ -261,8 +420,10 @@ def _identity_quat_if_none(quaternion_wxyz: np.ndarray | None) -> np.ndarray:
         raise ValueError("Quaternion norm must be non-zero.")
     return quat / norm
 
+
 def _normalized_g1_hand(hand: str) -> str:
     return normalize_g1_arm_side(hand)
+
 
 def _closed_joint_values(hand: str) -> dict[str, float]:
     values = dex3_grasp_joints(trigger=1.0, squeeze=1.0, hand_side=hand)
@@ -276,7 +437,10 @@ def _closed_joint_values(hand: str) -> dict[str, float]:
         f"{hand}_hand_middle_1_joint": float(values[6]),
     }
 
-def _link_transforms_from(root: ET.Element, *, base_link: str, joint_values: dict[str, float]) -> dict[str, np.ndarray]:
+
+def _link_transforms_from(
+    root: ET.Element, *, base_link: str, joint_values: dict[str, float]
+) -> dict[str, np.ndarray]:
     child_joints: dict[str, list[ET.Element]] = {}
     for joint in root.findall("joint"):
         parent = joint.find("parent")
@@ -298,6 +462,7 @@ def _link_transforms_from(root: ET.Element, *, base_link: str, joint_values: dic
             stack.append(child_link)
     return transforms
 
+
 def _joint_transform(joint: ET.Element, joint_values: dict[str, float]) -> np.ndarray:
     transform = _origin_transform(joint.find("origin"))
     if joint.attrib.get("type") == "revolute":
@@ -306,16 +471,24 @@ def _joint_transform(joint: ET.Element, joint_values: dict[str, float]) -> np.nd
             None if axis_element is None else axis_element.attrib.get("xyz"),
             default=[1.0, 0.0, 0.0],
         )
-        transform = transform @ _axis_angle_transform(axis, joint_values.get(joint.attrib["name"], 0.0))
+        transform = transform @ _axis_angle_transform(
+            axis, joint_values.get(joint.attrib["name"], 0.0)
+        )
     return transform
 
+
 def _origin_transform(origin: ET.Element | None) -> np.ndarray:
-    xyz = _float_triplet(None if origin is None else origin.attrib.get("xyz"), default=[0.0, 0.0, 0.0])
-    rpy = _float_triplet(None if origin is None else origin.attrib.get("rpy"), default=[0.0, 0.0, 0.0])
+    xyz = _float_triplet(
+        None if origin is None else origin.attrib.get("xyz"), default=[0.0, 0.0, 0.0]
+    )
+    rpy = _float_triplet(
+        None if origin is None else origin.attrib.get("rpy"), default=[0.0, 0.0, 0.0]
+    )
     transform = np.eye(4, dtype=np.float64)
     transform[:3, :3] = _rpy_matrix(rpy)
     transform[:3, 3] = xyz
     return transform
+
 
 def _axis_angle_transform(axis: np.ndarray, angle: float) -> np.ndarray:
     axis_arr = np.asarray(axis, dtype=np.float64).reshape(3)
@@ -339,6 +512,7 @@ def _axis_angle_transform(axis: np.ndarray, angle: float) -> np.ndarray:
     transform[:3, :3] = rotation
     return transform
 
+
 def _rpy_matrix(rpy: np.ndarray) -> np.ndarray:
     roll, pitch, yaw = [float(item) for item in np.asarray(rpy, dtype=np.float64).reshape(3)]
     cr, sr = math.cos(roll), math.sin(roll)
@@ -349,6 +523,7 @@ def _rpy_matrix(rpy: np.ndarray) -> np.ndarray:
     rz = np.asarray([[cy, -sy, 0.0], [sy, cy, 0.0], [0.0, 0.0, 1.0]], dtype=np.float64)
     return rz @ ry @ rx
 
+
 def _float_triplet(value: str | None, *, default: list[float]) -> np.ndarray:
     if value is None:
         return np.asarray(default, dtype=np.float64)
@@ -357,14 +532,20 @@ def _float_triplet(value: str | None, *, default: list[float]) -> np.ndarray:
         raise ValueError(f"Expected three floats, got {value!r}.")
     return np.asarray(parts, dtype=np.float64)
 
-def _distal_tip_local(root: ET.Element, urdf_path: Path, link_name: str, link_key: str) -> np.ndarray:
+
+def _distal_tip_local(
+    root: ET.Element, urdf_path: Path, link_name: str, link_key: str
+) -> np.ndarray:
     axis = _DISTAL_AXIS_BY_LINK_KEY[link_key]
     mesh_tip = _mesh_tip_local(root, urdf_path, link_name, axis)
     if mesh_tip is not None:
         return mesh_tip
     return axis * _DISTAL_FALLBACK_LENGTH_M
 
-def _mesh_tip_local(root: ET.Element, urdf_path: Path, link_name: str, axis: np.ndarray) -> np.ndarray | None:
+
+def _mesh_tip_local(
+    root: ET.Element, urdf_path: Path, link_name: str, axis: np.ndarray
+) -> np.ndarray | None:
     link = root.find(f"./link[@name='{link_name}']")
     if link is None:
         return None
@@ -390,6 +571,7 @@ def _mesh_tip_local(root: ET.Element, urdf_path: Path, link_name: str, axis: np.
         cap = verts[np.argmax(projection)].reshape(1, 3)
     return np.mean(cap, axis=0)
 
+
 def _resolve_mesh_path(filename: str, urdf_path: Path) -> Path | None:
     clean = filename
     if clean.startswith("package://"):
@@ -406,6 +588,7 @@ def _resolve_mesh_path(filename: str, urdf_path: Path) -> Path | None:
             return candidate
     return None
 
+
 def _stl_vertices(path: Path) -> np.ndarray | None:
     data = path.read_bytes()
     if len(data) >= 84:
@@ -416,7 +599,9 @@ def _stl_vertices(path: Path) -> np.ndarray | None:
             offset = 84
             for tri_index in range(tri_count):
                 values = struct.unpack("<12f", data[offset : offset + 48])
-                vertices[tri_index * 3 : tri_index * 3 + 3] = np.asarray(values[3:12], dtype=np.float64).reshape(3, 3)
+                vertices[tri_index * 3 : tri_index * 3 + 3] = np.asarray(
+                    values[3:12], dtype=np.float64
+                ).reshape(3, 3)
                 offset += 50
             return vertices
     try:
