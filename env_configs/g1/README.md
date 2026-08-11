@@ -175,6 +175,47 @@ CAPX_G1_DRY_RUN=true \
 求解 PyRoKi IK 并保存最终右臂 7-DoF 关节角。
 
 
+## Manual+SLAM 抓瓶搬运持久 Demo runner
+
+`tools/g1_bottle_carry_demo.py` 只控制右臂 `arm_action` 和右 Dex3，不发布
+`pedal_command`，也不创建 `rt/lowcmd` writer。locomotion 由 Humanoid
+`manual_whole_body_api --with-official-slam` 独立拥有，两进程只通过 operator 按
+Enter 确认阶段，不增加 IPC。
+
+先按本页启动 RGB-D observation bridge 和 SAM3/ContactGraspNet/PyRoKi 服务。真实
+运行必须显式双重确认：
+
+```bash
+cd /home/peilab/development/cap-x
+export UNITREE_NETWORK_INTERFACE=<G1 DDS interface>
+export CAPX_G1_DRY_RUN=false
+.venv/bin/python tools/g1_bottle_carry_demo.py \
+  --config-path env_configs/g1/g1_grasp_bottle.yaml \
+  --enable-real
+```
+
+流程如下：
+
+1. Humanoid manual 终端到达桌 A 并完成小步站位微调后，在 Cap-X 第一次提示按 Enter。
+2. runner 复用已验证的 `sample_grasp_center_pose()`、
+   `grasp_at_pinch_center(..., lift_dz=0.12)` 和右侧抬臂姿态；同一环境继续存活，
+   `G1RealLowLevel` 的 arm hold worker 持续刷新最后 target。
+3. 在 Humanoid manual 终端导航并微调到桌 B；确认瓶子和机器人稳定后，在 Cap-X
+   第二次提示按 Enter。
+4. runner 复用桌 A 保存的 torso-frame pose，依次执行 hover、下降、开手、后上方
+   撤回和右侧抬臂。两桌默认同高；Demo 结果由现场观察与录像确认。
+
+软件 dry-run 仅把低层输出强制为 dry-run；仍需要 observation 与视觉/IK 服务：
+
+```bash
+.venv/bin/python tools/g1_bottle_carry_demo.py --dry-run
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest \
+  tests/test_g1_bottle_carry_demo.py tests/test_unitree_g1_task_config.py -q
+```
+
+不要在持瓶导航期间退出、reset 或重新实例化 Cap-X 环境，否则 arm hold 和保存的桌 A
+抓取位姿都会丢失。
+
 ## 左臂控制
 
 `G1LeftRealControlApi` 为 coding agent 提供与 `G1RealControlApi` 完全相同的函数集合：`goto_pose`、`move_to_joints`、`sample_grasp_center_pose`、`grasp_at_pinch_center`、`move_to_pregrasp_side_pose`、`open_gripper`、`close_gripper`、`close_index_pinch`、`close_middle_pinch`、`set_gripper_trigger_squeeze` 和 `move_hand_joints`。
