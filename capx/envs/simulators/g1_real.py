@@ -393,6 +393,43 @@ class G1RealLowLevel(BaseEnv):
                         print(f"[g1-real] arm hold publish error: {message}")
                     self._arm_hold_last_error = message
 
+    def arm_hold_status(self) -> dict[str, Any]:
+        """Return whether the persistent arm target is actively held."""
+        if self.dry_run:
+            return {
+                "success": True,
+                "healthy": True,
+                "enabled": False,
+                "dry_run": True,
+                "target_available": False,
+                "thread_alive": False,
+                "paused": False,
+                "last_error": None,
+            }
+        with self._arm_hold_lock:
+            target_available = self._arm_hold_target is not None
+            paused = self._arm_hold_paused
+            last_error = self._arm_hold_last_error
+            thread = self._arm_hold_thread
+            thread_alive = thread is not None and thread.is_alive()
+        enabled = self._hold_arm_after_move
+        return {
+            "success": True,
+            "healthy": bool(
+                enabled
+                and target_available
+                and thread_alive
+                and not paused
+                and last_error is None
+            ),
+            "enabled": enabled,
+            "dry_run": False,
+            "target_available": target_available,
+            "thread_alive": thread_alive,
+            "paused": paused,
+            "last_error": last_error,
+        }
+
     def reset(
         self,
         *,

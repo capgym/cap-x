@@ -199,7 +199,10 @@ export CAPX_G1_DRY_RUN=false
 1. Humanoid manual 终端到达桌 A 并完成小步站位微调后，在 Cap-X 第一次提示按 Enter。
 2. runner 复用已验证的 `sample_grasp_center_pose()`、
    `grasp_at_pinch_center(..., lift_dz=0.12)` 和右侧抬臂姿态；同一环境继续存活，
-   `G1RealLowLevel` 的 arm hold worker 持续刷新最后 target。
+   `G1RealLowLevel` 的 arm hold worker 持续刷新最后 target。runner 同时以
+   `arm_hold_status()` 监控 target、worker 线程、暂停状态和发布错误；任何一项异常都会
+   锁存 `failed`，禁止进入桌 B 放置。抓取位姿只在抓取、侧抬和首次持臂健康检查全部
+   成功后保存，部分失败不能复用该位姿。
 3. 在 Humanoid manual 终端导航并微调到桌 B；确认瓶子和机器人稳定后，在 Cap-X
    第二次提示按 Enter。
 4. runner 复用桌 A 保存的 torso-frame pose，依次执行 hover、下降、开手、后上方
@@ -210,7 +213,8 @@ export CAPX_G1_DRY_RUN=false
 ```bash
 .venv/bin/python tools/g1_bottle_carry_demo.py --dry-run
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest \
-  tests/test_g1_bottle_carry_demo.py tests/test_unitree_g1_task_config.py -q
+  tests/test_g1_bottle_carry_demo.py tests/test_unitree_g1_task_config.py \
+  tests/integrations/test_g1_real_unitree_adapter.py -q
 ```
 
 不要在持瓶导航期间退出、reset 或重新实例化 Cap-X 环境，否则 arm hold 和保存的桌 A
