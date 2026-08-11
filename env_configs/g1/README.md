@@ -182,6 +182,13 @@ CAPX_G1_DRY_RUN=true \
 `manual_whole_body_api --with-official-slam` 独立拥有，两进程只通过 operator 按
 Enter 确认阶段，不增加 IPC。
 
+这个持久 runner 不会自行启动 API servers；同一台机器另一个终端必须运行
+`capx/serving/launch_servers.py --config-path env_configs/g1/g1_grasp_bottle.yaml`，并确认
+8114/8115/8116 分别是真正的 SAM3、ContactGraspNet 和 PyRoKi。若任一端口被其它程序
+占用，先释放端口再重启统一 launcher；只有端口处于 LISTEN 状态不能证明服务身份。
+PyRoKi CLI 使用轻量 motion-helper namespace，避免启动 8116 时触发完整 Cap-X API/env
+注册图的循环导入。
+
 先按本页启动 RGB-D observation bridge 和 SAM3/ContactGraspNet/PyRoKi 服务。真实
 运行必须显式双重确认：
 

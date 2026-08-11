@@ -3,6 +3,9 @@ from __future__ import annotations
 import asyncio
 import functools
 import logging
+from pathlib import Path
+import sys
+import types
 from typing import Any
 
 import numpy as np
@@ -12,6 +15,25 @@ import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from scipy.spatial.transform import Rotation, Slerp
+
+
+def _install_lightweight_integration_namespaces() -> None:
+    """Load motion helpers without executing the full API registration graph."""
+    capx_root = Path(__file__).resolve().parents[1]
+    namespaces = {
+        "capx.integrations": capx_root / "integrations",
+        "capx.integrations.motion": capx_root / "integrations" / "motion",
+    }
+    for name, path in namespaces.items():
+        if name in sys.modules:
+            continue
+        module = types.ModuleType(name)
+        module.__path__ = [str(path)]
+        module.__package__ = name
+        sys.modules[name] = module
+
+
+_install_lightweight_integration_namespaces()
 
 import capx.integrations.motion.pyroki_snippets as pks
 from capx.integrations.motion.pyroki_context import get_pyroki_context
