@@ -129,10 +129,17 @@ class RobosuiteBaseEnv(BaseEnv):
         return action
 
     def _do_robosuite_step(self, action: np.ndarray) -> None:
-        """Step robosuite with the given action, handling render skipping."""
+        """Step robosuite with the given action.
+
+        Camera observables are never refreshed here: they are rendered on demand
+        by get_observation(force_update=True). Gating them on ``_record_frames``
+        (as this used to) meant that with video recording off, perception saw the
+        RGB-D from reset() for the whole episode and grasped stale poses -- i.e.
+        --record-video silently changed task outcomes. viser debug views still
+        need a live render, so they keep the full step.
+        """
         sliced = action[:self._ACTION_SLICE] if self._ACTION_SLICE != 0 else action
-        need_render = (self._record_frames and self._sim_step_count % self._subsample_rate == 0) or hasattr(self, "viser_server")
-        if need_render:
+        if hasattr(self, "viser_server"):
             self.robosuite_env.step(sliced)
         else:
             self.robosuite_env.step(sliced, skip_render_images=True)
