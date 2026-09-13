@@ -161,9 +161,9 @@ class FrankaLiberoEnv(BaseEnv):
             if seed is not None:
                 # Assuming seed is the trial number (1-based)
                 state_idx = (seed - 1) % len(self.handle.init_states)
-                self.handle.env.set_init_state(self.handle.init_states[state_idx])
-                # Reset simulation again to apply the new init state
-                libero_obs = self.handle.env.reset()
+                # Reset first: LIBERO's reset() rebuilds the sim and would discard the init state
+                self.handle.env.reset()
+                libero_obs = self.handle.env.set_init_state(self.handle.init_states[state_idx])
                 libero_info = {}
 
         self._current_obs = libero_obs
