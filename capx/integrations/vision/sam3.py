@@ -47,6 +47,9 @@ def init_sam3(
 
     Returns a callable `segment_fn(image: np.ndarray | Image.Image, text_prompt: str) -> list[dict]`.
 
+    Empty detections return an empty list. Failed requests raise RuntimeError
+    with the last request exception as their cause.
+
     Note: checkpoint_path, device, and model_type are ignored in client mode.
     """
 
@@ -61,12 +64,8 @@ def init_sam3(
         encoded_image = _encode_image(image)
         payload = {"image_base64": encoded_image, "text_prompt": text_prompt}
 
-        try:
-            resp = post_with_retries(f"{SERVICE_URL}/segment", payload)
-            results_data = resp["results"]
-        except Exception as e:
-            print(f"Failed to communicate with SAM3 service at {SERVICE_URL}: {e}")
-            return []
+        # A service failure is not an empty detection result.
+        results_data = post_with_retries(f"{SERVICE_URL}/segment", payload)["results"]
 
         if not results_data:
             print(f"SAM3 returned no results for prompt: '{text_prompt}'")

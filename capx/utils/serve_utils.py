@@ -41,7 +41,7 @@ def post_with_retries(
     raise RuntimeError(
         f"Request to {url} failed after {attempts} retries / "
         f"{timeout_seconds:.2f}s. Last error: {last_err}"
-    )
+    ) from last_err
 
 
 def post_with_queue_tolerance(
@@ -95,4 +95,4 @@ def post_with_queue_tolerance(
     raise RuntimeError(
         f"Request to {url} failed after {attempts} retries / "
         f"{timeout_seconds:.2f}s. Last error: {last_err}"
-    )
+    ) from last_err
