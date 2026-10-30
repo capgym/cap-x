@@ -236,9 +236,9 @@ def _do_plan(req: PlanRequest) -> PlanResponse:
         current_retries += 1
 
     if current_retries >= max_retries:
-        grasps_out = np.array([])
+        grasps_out = np.empty((0, 4, 4))
         scores_out = np.array([])
-        contact_pts_out = np.array([])
+        contact_pts_out = np.empty((0, 3))
     else:
         grasps_result = pred_grasps_cam[segmap_id]
         scores_result = scores[segmap_id]
@@ -344,9 +344,9 @@ def _do_plan_point_clouds(req: PlanPointCloudsRequest) -> PlanResponse:
         current_retries += 1
 
     if current_retries >= max_retries:
-        grasps_out = np.array([])
+        grasps_out = np.empty((0, 4, 4))
         scores_out = np.array([])
-        contact_pts_out = np.array([])
+        contact_pts_out = np.empty((0, 3))
     else:
         grasps_result = pred_grasps_cam[segmap_id]
         scores_result = scores[segmap_id]
@@ -481,9 +481,9 @@ def _do_plan_evenly(req: PlanEvenlyRequest) -> PlanResponse:
         scores_out = np.concatenate(aggregated_scores, axis=0)
         contact_pts_out = np.concatenate(aggregated_contact_pts, axis=0)
     else:
-        grasps_out = np.array([])
+        grasps_out = np.empty((0, 4, 4))
         scores_out = np.array([])
-        contact_pts_out = np.array([])
+        contact_pts_out = np.empty((0, 3))
 
     return PlanResponse(
         grasps_base64=_numpy_to_base64(grasps_out),
