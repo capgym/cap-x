@@ -524,7 +524,6 @@ def main(device: str = "cuda", port: int = 8115, host: str = "127.0.0.1"):
     sys.path.append(vendor_root)
 
     try:
-        from contact_graspnet_pytorch.checkpoints import CheckpointIO
         from contact_graspnet_pytorch.contact_grasp_estimator import GraspEstimator
     except ImportError:
         logger.error(
@@ -541,13 +540,8 @@ def main(device: str = "cuda", port: int = 8115, host: str = "127.0.0.1"):
     _GRASP_ESTIMATOR = GraspEstimator(global_config)
 
     logger.info(f"Loading weights from {model_checkpoint_dir}")
-    checkpoint_io = CheckpointIO(checkpoint_dir=model_checkpoint_dir, model=_GRASP_ESTIMATOR.model)
-    try:
-        checkpoint_io.load("model.pt")
-    except FileExistsError:
-        logger.warning("No model checkpoint found")
-    except Exception as e:
-        logger.error(f"Error loading checkpoint: {e}")
+    checkpoint = torch.load(os.path.join(model_checkpoint_dir, "model.pt"), weights_only=False)
+    _GRASP_ESTIMATOR.model.load_state_dict(checkpoint["model"], strict=True)
 
     logger.info(f"GraspNet Service initialized on {device}. Starting Uvicorn...")
     uvicorn.run(app, host=host, port=port)
