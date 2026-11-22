@@ -235,7 +235,7 @@ def _do_plan(req: PlanRequest) -> PlanResponse:
 
         current_retries += 1
 
-    if current_retries >= max_retries:
+    if len(pred_grasps_cam.get(segmap_id, [])) == 0:
         grasps_out = np.empty((0, 4, 4))
         scores_out = np.array([])
         contact_pts_out = np.empty((0, 3))
@@ -343,7 +343,7 @@ def _do_plan_point_clouds(req: PlanPointCloudsRequest) -> PlanResponse:
 
         current_retries += 1
 
-    if current_retries >= max_retries:
+    if len(pred_grasps_cam.get(segmap_id, [])) == 0:
         grasps_out = np.empty((0, 4, 4))
         scores_out = np.array([])
         contact_pts_out = np.empty((0, 3))

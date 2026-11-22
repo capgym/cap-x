@@ -55,3 +55,42 @@ def test_grasp_result_shapes(monkeypatch, method, count):
         vtf.SE3.from_matrix(actual) @ vtf.SE3.from_translation(np.array([0, 0, 0.12]))
     ).as_matrix()
     assert transformed.shape == (count, 4, 4)
+
+
+@pytest.mark.parametrize("method", ["_do_plan", "_do_plan_point_clouds"])
+@pytest.mark.parametrize("empty_predictions,max_retries", [(0, 0), (1, 1), (2, 2)])
+def test_grasps_found_on_final_attempt_are_returned(
+    monkeypatch, method, empty_predictions, max_retries
+):
+    grasp = np.eye(4)[None]
+    cloud = np.array([[0.0, 0.0, 1.0]])
+    estimator = Mock()
+    estimator.extract_point_clouds.return_value = (cloud, {1: cloud}, None)
+    estimator.predict_scene_grasps.side_effect = [({}, {}, {}, None)] * empty_predictions + [
+        ({1: grasp}, {1: np.ones(1)}, {1: np.zeros((1, 3))}, None)
+    ]
+    monkeypatch.setattr(server, "_GRASP_ESTIMATOR", estimator)
+    monkeypatch.setattr(
+        server,
+        "sample_random_camera_viewpoint",
+        lambda *a, **kw: (np.zeros(3), np.array([1.0, 0.0, 0.0, 0.0])),
+    )
+    if method == "_do_plan_point_clouds":
+        request = server.PlanPointCloudsRequest(
+            pc_full_base64=server._numpy_to_base64(cloud),
+            pc_segment_base64=server._numpy_to_base64(cloud),
+            max_retries=max_retries,
+        )
+    else:
+        request = server.PlanRequest(
+            depth_base64=server._numpy_to_base64(np.ones((2, 2))),
+            cam_K_base64=server._numpy_to_base64(np.eye(3)),
+            segmap_base64=server._numpy_to_base64(np.ones((2, 2), dtype=np.int32)),
+            segmap_id=1,
+            max_retries=max_retries,
+        )
+    response = getattr(server, method)(request)
+    assert estimator.predict_scene_grasps.call_count == empty_predictions + 1
+    assert server._base64_to_numpy(response.grasps_base64).shape == (1, 4, 4)
+    assert server._base64_to_numpy(response.scores_base64).shape == (1,)
+    assert server._base64_to_numpy(response.contact_pts_base64).shape == (1, 3)
