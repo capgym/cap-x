@@ -55,6 +55,19 @@ ruff format         # format
 
 When contributing, please use ruff (automatically installed) for linting. See [ruff docs](https://docs.astral.sh/ruff/tutorial/#getting-started).
 
+## Perception client failures
+
+SAM3 and Molmo distinguish failed requests from successful responses with no detections.
+SAM3 returns `[]` for no detections; Molmo returns `(None, None)` for an object whose
+coordinates cannot be parsed from a successful response. Failed requests propagate after
+the existing retries. SAM3's `RuntimeError` chains the last request exception; Molmo
+re-raises it directly. The shared retry helpers also retain the last exception as `__cause__`.
+
+Callers that need outage recovery must handle these exceptions explicitly. In particular,
+LIBERO's SAM3-to-Molmo fallback still runs for a valid empty detection, but a failed SAM3
+request now propagates before that fallback. HTTP argument errors also remain errors;
+these clients do not decide whether an evaluation should score or exclude them.
+
 ## SAM3 access
 
 SAM3 by facebookresearch is currently not yet an accessible HuggingFace autogenerator module, so we install it as a package via third party integrations. Before using SAM 3, please request access to the checkpoints on the SAM 3 Hugging Face repo: https://github.com/facebookresearch/sam3

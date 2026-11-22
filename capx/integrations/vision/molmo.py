@@ -157,6 +157,8 @@ def init_molmo(
         A callable that takes an image and a list of object strings, and returns a
         mapping from object name to a pixel coordinate tuple (x, y). If a point
         could not be parsed, the value is (None, None).
+
+    Request failures propagate after retries; they are not empty detections.
     """
     # chat_url = f"{base_url.rstrip('/')}/v1/chat/completions" # SGLANG 
     chat_url = f"{base_url.rstrip('/')}/chat/completions" # vLLM
@@ -217,7 +219,7 @@ def init_molmo(
                     if attempt < max_retries - 1:
                         time.sleep(backoff * (2 ** attempt))
                     else:
-                        generated_text = ""
+                        raise
 
             points, norm_scale = _parse_points(generated_text or "")
             if points:
