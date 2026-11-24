@@ -475,7 +475,11 @@ class FrankaRobosuiteCubesRestackLowLevel(RobosuiteBaseEnv):
 
     def get_observation(self) -> dict[str, Any]:
         """Get observation in FrankaPickPlaceLowLevel format."""
-        robosuite_obs = self.robosuite_env._get_observations()
+        # force_update=True: camera observables are otherwise only refreshed by the
+        # occasional full robosuite step, which used to be gated on video recording.
+        # Without it, perception (SAM3/GraspNet) reuses the RGB-D from reset() and
+        # grasps stale object poses. See _do_robosuite_step in robosuite_base.py.
+        robosuite_obs = self.robosuite_env._get_observations(force_update=True)
         pose_dict = self._cube_pose_dict(robosuite_obs)
         cube_pose_array = np.stack(
             [

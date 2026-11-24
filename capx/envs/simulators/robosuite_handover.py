@@ -249,10 +249,9 @@ class RobosuiteHandoverEnv(BaseEnv):
             action = np.concatenate([robot0_action, robot1_action])
 
             # Step the environment
-            if self._record_frames and self._sim_step_count % self._subsample_rate == 0:
-                self.robosuite_env.step(action)
-            else:
-                self.robosuite_env.step(action, skip_render_images=True)
+            # Camera observables are refreshed on demand by
+            # get_observation(force_update=True), never by video recording.
+            self.robosuite_env.step(action, skip_render_images=True)
 
             if hasattr(self, "viser_server") and self._sim_step_count % self._subsample_rate == 0:
                 self._update_viser_server()
@@ -295,10 +294,9 @@ class RobosuiteHandoverEnv(BaseEnv):
             action = np.concatenate([robot0_action, robot1_action])
 
             # Step the environment
-            if self._record_frames and self._sim_step_count % self._subsample_rate == 0:
-                self.robosuite_env.step(action)
-            else:
-                self.robosuite_env.step(action, skip_render_images=True)
+            # Camera observables are refreshed on demand by
+            # get_observation(force_update=True), never by video recording.
+            self.robosuite_env.step(action, skip_render_images=True)
 
             if hasattr(self, "viser_server") and self._sim_step_count % self._subsample_rate == 0:
                 self._update_viser_server()
@@ -345,10 +343,9 @@ class RobosuiteHandoverEnv(BaseEnv):
             action = np.concatenate([robot0_action, robot1_action])
 
             # Step the environment
-            if self._record_frames and self._sim_step_count % self._subsample_rate == 0:
-                self.robosuite_env.step(action)
-            else:
-                self.robosuite_env.step(action, skip_render_images=True)
+            # Camera observables are refreshed on demand by
+            # get_observation(force_update=True), never by video recording.
+            self.robosuite_env.step(action, skip_render_images=True)
 
             if hasattr(self, "viser_server") and self._sim_step_count % self._subsample_rate == 0:
                 self._update_viser_server()
