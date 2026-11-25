@@ -312,27 +312,31 @@ class Tron2CubeLiftLowLevel(BaseEnv):
             self._rng = np.random.default_rng(seed)
 
         self._ensure_connected()
-        mujoco.mj_resetData(self.model, self.data)
-
-        # Initialize local arm joints to match current official controller state before MoveJ
-        q_now = self.client.get_joint_state()
-        self._q_ref = q_now.copy()
-        for idx, qpos_adr, *_ in self._arm_bindings:
-            self.data.qpos[qpos_adr] = q_now[idx]
-        mujoco.mj_forward(self.model, self.data)
-
         self._step_count = 0
         self._poll_count = 0
 
-        # Move to safe raised home pose, then settle the cube cleanly on the tabletop
-        self.move_home(duration_sec=2.5)
+        # 1) 先让 4090w 官方控制器抬臂到位（避免从垂手姿态在桌板底下硬顶桌底）
+        self._grip_l = GRIPPER_OPEN_RAD
+        self._grip_r = GRIPPER_OPEN_RAD
+        self.client.move_j(DEFAULT_HOME_Q16[:14], duration_sec=2.5)
+        time.sleep(3.0)
+        q_home = self.client.get_joint_state()
+
+        # 2) 再重置本地桌面场景，直接以“抬臂在桌面上方”的干净姿态开局
+        mujoco.mj_resetData(self.model, self.data)
+        self._q_ref = q_home.copy()
+        for idx, qpos_adr, *_ in self._arm_bindings:
+            self.data.qpos[qpos_adr] = q_home[idx]
         self.data.qpos[self._cube_qpos_adr : self._cube_qpos_adr + 3] = np.array([0.52, 0.15, 0.875])
         self.data.qpos[self._cube_qpos_adr + 3 : self._cube_qpos_adr + 7] = np.array([1.0, 0.0, 0.0, 0.0])
         self.data.qvel[self.model.jnt_dofadr[self._cube_jnt_id] : self.model.jnt_dofadr[self._cube_jnt_id] + 6] = 0.0
         mujoco.mj_forward(self.model, self.data)
-        self._apply_pd_and_step(100)
+        self._apply_pd_and_step(150)
         self._cube_init_world = self.data.xpos[self._cube_id].copy()
 
+        pose = self.client.get_move_pose()
+        self._last_left_pose = (pose.left_pos.copy(), pose.left_quat.copy())
+        self._last_right_pose = (pose.right_pos.copy(), pose.right_quat.copy())
         return self.get_observation(), {}
 
     def step(self, action: Any) -> tuple[dict[str, Any], float, bool, bool, dict[str, Any]]:
