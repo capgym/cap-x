@@ -185,3 +185,14 @@ register_config(
         apis=["R1ProControlApi"],
     ),
 )
+
+from .tron2.tron2_cube_lift import Tron2CubeLiftCodeEnv
+register_exec_env("tron2_cube_lift_code_env", Tron2CubeLiftCodeEnv)
+register_config(
+    "tron2_cube_lift_code_env",
+    CodeExecEnvConfig(
+        low_level="tron2_cube_lift_low_level",
+        apis=["Tron2ControlPrivilegedApi"],
+        privileged=True,
+    ),
+)

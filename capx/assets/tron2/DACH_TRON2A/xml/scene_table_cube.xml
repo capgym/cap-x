@@ -1,0 +1,30 @@
+<mujoco model="tron2_table_cube">
+  <!-- 直接复用官方原版 TRON2 带夹爪模型，不改官方文件一个字 -->
+  <include file="robot_grasper.xml"/>
+
+  <worldbody>
+    <!-- 桌子：前沿 x=0.37m，后沿 x=1.07m，宽 1.10m，桌面高度 z=0.85m -->
+    <body name="table" pos="0.72 0.0 0.0">
+      <geom name="table_top" type="box" pos="0 0 0.825" size="0.35 0.55 0.025"
+            rgba="0.84 0.80 0.74 1" friction="1.0 0.005 0.0001" condim="3"/>
+      <site name="table_top_site" pos="0 0 0.85" size="0.005" rgba="0 0 0 0"/>
+      <!-- 四条视觉桌腿（避开 TRON2 底座脚轮，不参与碰撞） -->
+      <geom name="table_leg_1" type="cylinder" pos=" 0.30  0.50 0.40" size="0.025 0.40" rgba="0.28 0.30 0.34 1" contype="0" conaffinity="0"/>
+      <geom name="table_leg_2" type="cylinder" pos=" 0.30 -0.50 0.40" size="0.025 0.40" rgba="0.28 0.30 0.34 1" contype="0" conaffinity="0"/>
+      <geom name="table_leg_3" type="cylinder" pos="-0.25  0.50 0.40" size="0.025 0.40" rgba="0.28 0.30 0.34 1" contype="0" conaffinity="0"/>
+      <geom name="table_leg_4" type="cylinder" pos="-0.25 -0.50 0.40" size="0.025 0.40" rgba="0.28 0.30 0.34 1" contype="0" conaffinity="0"/>
+    </body>
+
+    <!-- 红方块：5cm x 5cm x 5cm，80g，实心鲜红色 + 高摩擦 -->
+    <body name="red_cube" pos="0.52 0.15 0.875">
+      <freejoint name="red_cube_joint"/>
+      <geom name="red_cube_geom" type="box" size="0.025 0.025 0.025" mass="0.08"
+            rgba="0.90 0.14 0.14 1" friction="1.5 0.01 0.001" condim="4"/>
+    </body>
+
+    <!-- 主相机（对齐原版 Cap-X 相机名）：从桌前斜俯视机器人与桌面 -->
+    <camera name="robot0_robotview" pos="1.30 0.0 1.48" xyaxes="0 1 0 -0.6187 0 0.7856" fovy="55"/>
+    <!-- 胸口 D435 视角：模拟真机胸口相机俯看桌面 -->
+    <camera name="chest_d435" pos="0.15 0.02 1.19" xyaxes="0 -1 0 0.669 0 0.743" fovy="58"/>
+  </worldbody>
+</mujoco>

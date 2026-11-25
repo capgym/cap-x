@@ -47,3 +47,9 @@ wandb/
 *.ico
 *.webp
 check.md
+# TRON2 large vendor assets & local logs (keep only custom scene XML)
+MUJOCO_LOG.TXT
+capx/assets/tron2/DACH_TRON2A/*
+!capx/assets/tron2/DACH_TRON2A/xml/
+capx/assets/tron2/DACH_TRON2A/xml/*
+!capx/assets/tron2/DACH_TRON2A/xml/scene_table_cube.xml

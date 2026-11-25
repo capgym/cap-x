@@ -68,3 +68,11 @@ except Exception:
     # import traceback
     print("R1Pro not installed!")
     # traceback.print_exc()
+
+try:
+    from .tron2_cube_lift import Tron2CubeLiftLowLevel
+    register_env("tron2_cube_lift_low_level", Tron2CubeLiftLowLevel)
+except Exception:
+    import traceback
+    print("TRON2 simulator not available!")
+    traceback.print_exc()

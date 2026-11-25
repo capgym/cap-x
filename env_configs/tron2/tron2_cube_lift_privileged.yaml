@@ -1,0 +1,20 @@
+# Usage (on 4090w or full Cap-X env):
+#   uv run --no-sync --active capx/envs/launch.py --config-path env_configs/tron2/tron2_cube_lift_privileged.yaml --use-oracle-code True --total-trials 1
+
+env:
+  _target_: capx.envs.tasks.tron2.tron2_cube_lift.Tron2CubeLiftCodeEnv
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    low_level: tron2_cube_lift_low_level
+    privileged: true
+    enable_render: true
+    apis:
+      - Tron2ControlPrivilegedApi
+
+api_servers: []
+
+record_video: true
+output_dir: ./outputs/tron2_cube_lift_privileged
+
+trials: 1
+num_workers: 1
