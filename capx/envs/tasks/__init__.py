@@ -196,3 +196,14 @@ register_config(
         privileged=True,
     ),
 )
+
+from .tron2.tron2_cube_lift_visual import Tron2CubeLiftVisualCodeEnv
+register_exec_env("tron2_cube_lift_visual_code_env", Tron2CubeLiftVisualCodeEnv)
+register_config(
+    "tron2_cube_lift_visual_code_env",
+    CodeExecEnvConfig(
+        low_level="tron2_cube_lift_low_level",
+        apis=["Tron2ControlApi"],
+        privileged=False,
+    ),
+)

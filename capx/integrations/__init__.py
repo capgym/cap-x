@@ -133,4 +133,10 @@ try:
     from .tron2.control_privileged import Tron2ControlPrivilegedApi
     register_api("Tron2ControlPrivilegedApi", Tron2ControlPrivilegedApi)
 except ImportError as exc:
-    print(f"TRON2 API not available, skipping: {exc}")
+    print(f"TRON2 privileged API not available, skipping: {exc}")
+
+try:
+    from .tron2.control import Tron2ControlApi
+    register_api("Tron2ControlApi", Tron2ControlApi)
+except ImportError as exc:
+    print(f"TRON2 visual API not available, skipping: {exc}")
