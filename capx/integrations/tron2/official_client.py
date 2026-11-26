@@ -7,6 +7,7 @@ on local 4090w simulation, SSH-tunneled Mac dev, and real TRON2 hardware).
 from __future__ import annotations
 
 import json
+import math
 import re
 import threading
 import time
@@ -117,7 +118,9 @@ class Tron2OfficialClient:
         self._closed = threading.Event()
         self._cond = threading.Condition()
         self._send_lock = threading.Lock()
+        self._pending_requests: set[str] = set()
         self._responses: dict[str, dict[str, Any]] = {}
+        self._servoj_notifications: list[dict[str, Any]] = []
 
     def connect(self) -> None:
         self._ws = websocket.create_connection(self.url, timeout=self.timeout_sec)
@@ -137,23 +140,44 @@ class Tron2OfficialClient:
             self._recv_thread.join(timeout=1.0)
 
     def _recv_loop(self) -> None:
-        while not self._closed.is_set() and self._ws is not None:
+        ws = self._ws
+        while ws is not None and self._ws is ws and not self._closed.is_set():
             try:
-                raw = self._ws.recv()
+                raw = ws.recv()
+            except websocket.WebSocketTimeoutException:
+                continue
             except Exception:
                 break
             if not raw:
-                continue
+                break
             try:
                 msg = json.loads(raw)
             except json.JSONDecodeError:
                 continue
+            if not isinstance(msg, dict):
+                continue
+            title = str(msg.get("title", ""))
+            guid = msg.get("guid")
             with self._cond:
-                title = str(msg.get("title", ""))
-                guid = msg.get("guid")
-                if title.startswith("response_") and guid:
+                if title == "notify_servoJ":
+                    self._servoj_notifications.append(msg)
+                elif title.startswith("response_") and isinstance(guid, str) and guid in self._pending_requests:
                     self._responses[guid] = msg
                     self._cond.notify_all()
+
+    def _send_request(self, title: str, data: dict[str, Any] | None, guid: str) -> None:
+        payload = {
+            "accid": self.accid,
+            "title": title,
+            "timestamp": int(time.time() * 1000),
+            "guid": guid,
+            "data": data or {},
+        }
+        with self._send_lock:
+            ws = self._ws
+            if ws is None or self._closed.is_set():
+                raise RuntimeError("Tron2OfficialClient is not connected.")
+            ws.send(json.dumps(payload, ensure_ascii=False))
 
     def request(self, title: str, data: dict[str, Any] | None = None, timeout_sec: float | None = None) -> dict[str, Any]:
         if self._ws is None:
@@ -163,28 +187,45 @@ class Tron2OfficialClient:
 
         guid = str(uuid.uuid4())
         expected_title = "response_" + title[len("request_"):]
-        payload = {
-            "accid": self.accid,
-            "title": title,
-            "timestamp": int(time.time() * 1000),
-            "guid": guid,
-            "data": data or {},
-        }
-        with self._send_lock:
-            self._ws.send(json.dumps(payload, ensure_ascii=False))
-
-        deadline = time.perf_counter() + (timeout_sec or self.timeout_sec)
         with self._cond:
-            try:
+            self._pending_requests.add(guid)
+        try:
+            self._send_request(title, data, guid)
+            deadline = time.perf_counter() + (timeout_sec or self.timeout_sec)
+            with self._cond:
                 while time.perf_counter() < deadline:
                     resp = self._responses.get(guid)
                     if resp is not None and resp.get("title") == expected_title:
-                        return self._responses.pop(guid)
+                        return resp
                     rem = max(0.0, deadline - time.perf_counter())
                     self._cond.wait(timeout=min(0.05, rem))
-            finally:
+        finally:
+            with self._cond:
+                self._pending_requests.discard(guid)
                 self._responses.pop(guid, None)
         raise TimeoutError(f"Timed out waiting for {expected_title} (guid={guid})")
+
+    def send_servoj(self, q16: list[float] | np.ndarray, filter_ratio: float = 1.0) -> None:
+        """Send one ServoJ target in wire order without waiting for a response."""
+        q = [float(value) for value in q16]
+        if len(q) != len(PROTOCOL_JOINT_NAMES) or not all(math.isfinite(value) for value in q):
+            raise ValueError("ServoJ expects 16 finite joint angles")
+        ratio = float(filter_ratio)
+        if not 0.0 <= ratio <= 1.0:
+            raise ValueError("ServoJ filter_ratio must be in [0, 1]")
+        self._send_request("request_servoj", {"q": q, "filter_ratio": ratio}, str(uuid.uuid4()))
+
+    def drain_servoj_notifications(self) -> list[dict[str, Any]]:
+        """Return pending vendor ServoJ notifications in receive order."""
+        with self._cond:
+            messages = self._servoj_notifications
+            self._servoj_notifications = []
+        return messages
+
+    def servoj_receive_alive(self) -> bool:
+        """Return whether the WebSocket receiver can still collect notifications."""
+        thread = self._recv_thread
+        return not self._closed.is_set() and thread is not None and thread.is_alive()
 
     def get_joint_state(self) -> np.ndarray:
         """Return current 16-axis joint angles (rad) in PROTOCOL_JOINT_NAMES order."""

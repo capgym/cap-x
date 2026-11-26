@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 
@@ -11,6 +12,7 @@ import numpy as np
 from capx.integrations.base_api import ApiBase
 
 from .grasp_feasibility import cgn_approach_waypoints, plan_left_tcp_motion
+from .servoj import move_left_servoj_path
 
 
 def _quat_wxyz_to_rotmat(quat_wxyz: np.ndarray | list[float]) -> np.ndarray:
@@ -60,7 +62,12 @@ class Tron2LeftMotionApi(ApiBase):
                     self._env.record_rejected_motion()
                     self._verify_left_tcp(target, quat, stage, backend)
                     return False
-                sent = self._env.move_left_joint_path(path, duration_sec)
+                if backend == "servoj":
+                    stream = move_left_servoj_path(self._env, path, duration_sec)
+                    print(f"[{self._motion_log_name}] SERVOJ_STREAM stage={stage} {json.dumps(stream, ensure_ascii=False)}")
+                    sent = stream["completed"]
+                else:
+                    sent = self._env.move_left_joint_path(path, duration_sec)
             reached = self._verify_left_tcp(target, quat, stage, backend)
         if not sent:
             print(f"[{self._motion_log_name}] WARNING: {stage} {backend} execution did not complete.",
@@ -94,8 +101,8 @@ class Tron2LeftMotionApi(ApiBase):
             or a missed endpoint, returns False and leaves the arm at its resulting pose.
         """
         backend = os.environ.get("CAPX_TRON2_LEFT_MOTION", "movej").lower()
-        if backend not in ("movej", "movep"):
-            raise ValueError("CAPX_TRON2_LEFT_MOTION must be movej or movep")
+        if backend not in ("movej", "movep", "servoj"):
+            raise ValueError("CAPX_TRON2_LEFT_MOTION must be movej, movep, or servoj")
         target = np.asarray(pos, dtype=float).reshape(3)
         if not np.isfinite(target).all():
             raise ValueError("The requested TCP position must be finite")
