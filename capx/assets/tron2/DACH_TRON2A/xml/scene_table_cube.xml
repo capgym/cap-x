@@ -1,6 +1,7 @@
 <mujoco model="tron2_table_cube">
   <!-- 直接复用官方原版 TRON2 带夹爪模型，不改官方文件一个字 -->
   <include file="robot_grasper.xml"/>
+  <option cone="elliptic" impratio="10"/>
 
   <worldbody>
     <!-- 桌子：前沿 x=0.37m，后沿 x=1.07m，宽 1.10m，桌面高度 z=0.85m -->
