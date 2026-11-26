@@ -1,0 +1,45 @@
+# M4 evaluates the reduced primitives with multi-turn visual differencing.
+env:
+  _target_: capx.envs.tasks.tron2.tron2_cube_lift_reduced.Tron2CubeLiftReducedCodeEnv
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    low_level: tron2_cube_lift_low_level
+    privileged: false
+    enable_render: true
+    apis:
+      - Tron2ControlReducedApi
+    multi_turn_prompt: |
+      Task: lift the red cube at least 10 cm with the left arm.
+      The following Python has already run in this episode:
+      ```python
+      {executed_code}
+      ```
+      Console stdout:
+      ```
+      {console_stdout}
+      ```
+      Console stderr:
+      ```
+      {console_stderr}
+      ```
+      Read the visual feedback and the measured motion result. If needed, query
+      a fresh observation or measure the left TCP in the current state. A
+      successful joint movement alone gives no evidence that the cube was held.
+      Reply REGENERATE followed by one fenced Python block to continue.
+      Reply FINISH if the episode is complete.
+
+api_servers:
+  - _target_: capx.serving.launch_sam3_server.main
+    device: cuda
+    port: 8114
+    host: 127.0.0.1
+  - _target_: capx.serving.launch_contact_graspnet_server.main
+    port: 8115
+    host: 127.0.0.1
+
+use_img_differencing: true
+record_video: true
+save_multiturn_prompts: true
+output_dir: ./outputs/tron2_cube_lift_visual_reduced_multiturn
+trials: 100
+num_workers: 1

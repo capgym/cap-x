@@ -9,7 +9,7 @@ Goal: pick up the red cube on the table with the left arm and lift it at least 1
 Coordinate frame (base_Link):
 - +X is forward (toward the table), +Y is left, +Z is up.
 - All positions are [x, y, z] in meters relative to base_Link.
-- The default gripper orientation points horizontally forward (+X), with jaws opening along +/-Y.
+- At reset, the left gripper points approximately forward (+X), with jaws opening along +/-Y. Omitting the target orientation keeps the measured orientation.
 - To avoid knocking the cube over, approach from behind (-X offset ~10 cm), slide forward, close the gripper, then lift vertically (+Z).
 
 You may write python code comments for reasoning, but ONLY write executable Python code and do not wrap it in code fences.

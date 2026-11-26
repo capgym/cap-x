@@ -4,7 +4,7 @@ set -euo pipefail
 usage() {
     cat <<'USAGE'
 Usage: bash scripts/run_tron2_route2.sh VENDOR_DIR TEST_OPT_DIR OUTPUT_DIR [SWEEP_ARGS]
-       bash scripts/run_tron2_route2.sh VENDOR_DIR TEST_OPT_DIR OUTPUT_DIR --tier S2|M1 --model MODEL [MODEL_ARGS]
+       bash scripts/run_tron2_route2.sh VENDOR_DIR TEST_OPT_DIR OUTPUT_DIR --tier TIER --model MODEL [MODEL_ARGS]
 
 Run a recorded CGN sweep with the official controller and one Python MuJoCo
 world in a private Linux namespace. OUTPUT_DIR must be new.
@@ -16,10 +16,15 @@ Optional env vars: CUDA_VISIBLE_DEVICES, TRON2_PYTHON (default .venv/bin/python)
 TRON2_SDK_DIR (directory containing limxsdk if it is outside the venv).
 SWEEP_ARGS can include --fresh-trials 1, --ranks 0 1, --jaw-branch 0, or
 --candidate-file FILE.
-MODEL_ARGS can include --server-url http://127.0.0.1:18089/v1/chat/completions,
---trials 1, --max-tokens 1024, --max-code-blocks 4, or --candidate-file FILE for
-recorded diagnostics. Run the model server on the host loopback before launching.
-The optional TRON2_MODEL_API_KEY is passed to it.
+TIER is S1–S4 (single-turn) or M1–M4 (multi-turn).
+MODEL_ARGS include --server-url http://127.0.0.1:18089/v1/chat/completions,
+--trials 1, --first-seed 1, --cube-xy-jitter-m 0.0, --max-tokens 1024, and
+--max-code-blocks 4. S2 and M1–M3 can also use --candidate-file for batch replay.
+M2 requires an image-capable coding model. M3/M4 use an image differencing model at
+--vdm-model MODEL and --vdm-server-url URL, defaulting to the coding model and URL.
+For custom model IDs, pass --model-is-vlm or --vdm-model-is-vlm as appropriate.
+Run the model servers on the host loopback before launching. Optional credentials
+are read from TRON2_MODEL_API_KEY and TRON2_VDM_API_KEY.
 USAGE
 }
 
@@ -63,18 +68,19 @@ fi
 sweep_args=()
 tier=
 model_url=http://127.0.0.1:18089/v1/chat/completions
+vdm_url=
 while (( $# )); do
     case "$1" in
-        --tier|--server-url)
+        --tier|--server-url|--vdm-server-url)
             if (( $# < 2 )); then
                 printf 'A value is required after %s.\n' "$1" >&2
                 exit 2
             fi
-            if [[ $1 == --tier ]]; then
-                tier=$2
-            else
-                model_url=$2
-            fi
+            case "$1" in
+                --tier) tier=$2 ;;
+                --server-url) model_url=$2 ;;
+                --vdm-server-url) vdm_url=$2 ;;
+            esac
             shift 2
             ;;
         --candidate-file)
@@ -93,37 +99,53 @@ while (( $# )); do
 done
 
 relay_dir=
-relay_pid=
 relay_socket=
+vdm_relay_socket=
+relay_pids=()
 namespace_prefix=()
 if [[ -n $tier ]]; then
-    if [[ $tier != S2 && $tier != M1 ]]; then
-        printf 'The TRON2 model tier must be S2 or M1.\n' >&2
+    if [[ ! $tier =~ ^[SM][1-4]$ ]]; then
+        printf 'The TRON2 model tier must be S1–S4 or M1–M4.\n' >&2
+        exit 2
+    fi
+    if [[ -n $vdm_url && $tier != M3 && $tier != M4 ]]; then
+        printf 'An image differencing endpoint is available for M3 and M4.\n' >&2
         exit 2
     fi
     relay_dir=$(mktemp -d /tmp/capx-tron2-relay.XXXXXX)
     relay_socket=$relay_dir/model.sock
     cleanup_relay() {
-        if [[ -n $relay_pid ]]; then
-            kill -TERM "$relay_pid" 2>/dev/null || true
-            wait "$relay_pid" 2>/dev/null || true
-        fi
-        rm -f -- "$relay_socket"
+        local pid
+        for pid in "${relay_pids[@]}"; do
+            kill -TERM "$pid" 2>/dev/null || true
+            wait "$pid" 2>/dev/null || true
+        done
+        rm -f -- "$relay_dir/model.sock" "$relay_dir/vdm.sock"
         rmdir -- "$relay_dir"
     }
     trap cleanup_relay EXIT
     trap 'exit 130' INT
     trap 'exit 143' TERM
-    "$python" "$repo/scripts/run_tron2_model.py" --serve-relay "$relay_socket" --server-url "$model_url" &
-    relay_pid=$!
-    for _ in {1..50}; do
-        [[ -S $relay_socket ]] && break
-        kill -0 "$relay_pid" 2>/dev/null || break
-        sleep 0.1
-    done
-    if [[ ! -S $relay_socket ]]; then
-        printf 'Failed to start the private model relay.\n' >&2
-        exit 1
+    start_relay() {
+        local relay_path=$1 server_url=$2 pid
+        "$python" "$repo/scripts/run_tron2_model.py" --serve-relay "$relay_path" --server-url "$server_url" &
+        pid=$!
+        relay_pids+=("$pid")
+        for _ in {1..50}; do
+            [[ -S $relay_path ]] && return
+            kill -0 "$pid" 2>/dev/null || break
+            sleep 0.1
+        done
+        printf 'Failed to start the relay for %s.\n' "$server_url" >&2
+        return 1
+    }
+    start_relay "$relay_socket" "$model_url"
+    if [[ -n $vdm_url ]]; then
+        vdm_relay_socket=$relay_socket
+        if [[ $vdm_url != "$model_url" ]]; then
+            vdm_relay_socket=$relay_dir/vdm.sock
+            start_relay "$vdm_relay_socket" "$vdm_url"
+        fi
     fi
 else
     # Preserve sweep launcher behavior and signal ownership.
@@ -132,6 +154,7 @@ fi
 
 "${namespace_prefix[@]}" unshare -Urnmpi --fork --mount-proc --propagation private bash -s -- \
     "$repo" "$vendor" "$test_opt" "$output" "$python" "$sdk" "$tier" "$relay_socket" "$model_url" \
+    "$vdm_relay_socket" "$vdm_url" \
     "${sweep_args[@]}" <<'NAMESPACE'
 set -euo pipefail
 repo=$1
@@ -143,7 +166,9 @@ sdk=$6
 tier=$7
 relay_socket=$8
 model_url=$9
-shift 9
+vdm_relay_socket=${10}
+vdm_url=${11}
+shift 11
 
 mkdir -p -- "$(dirname -- "$output")"
 mkdir -- "$output"
@@ -202,7 +227,12 @@ controller_listening() {
 
 printf 'Route 2 logs and videos: %s\n' "$output"
 if [[ -n $tier ]]; then
+    vdm_args=()
+    if [[ -n $vdm_url ]]; then
+        vdm_args=(--vdm-server-url "$vdm_url" --vdm-relay-socket "$vdm_relay_socket")
+    fi
     "$python" scripts/run_tron2_model.py "$@" --tier "$tier" --relay-socket "$relay_socket" \
+        "${vdm_args[@]}" \
         --server-url "$model_url" --output-dir "$output/evaluation" \
         --route2-startup-dir "$output" >"$output/tabletop.log" 2>&1 &
 else

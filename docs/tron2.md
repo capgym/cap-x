@@ -99,22 +99,27 @@ the official controller. It stores controller and simulator logs at the run root
 and candidate data, video, and results under `evaluation/`. Copy selected outputs
 to the Mac for inspection.
 
-## Run the S2 and M1 model profiles
+## Run the S1–S4 and M1–M4 model profiles
 
 Start an OpenAI-compatible model server on the host loopback, then pass its model
-ID and chat endpoint to the isolated launcher. S2 runs one generated program per
-episode. M1 sends console feedback to the model between code blocks in the same
-episode. Both use SAM3 and Contact-GraspNet through the same task API.
+ID and chat endpoint to the isolated launcher. S1 uses privileged state. S2
+uses RGB-D perception with high-level actions. S3 and S4 use low-level primitives
+with and without usage examples, respectively. M1 adds console feedback, M2 adds
+RGB images for the coding model, and M3 and M4 use textual visual differencing
+with high-level and low-level actions, respectively.
 
 ```bash
 TRON2_SDK_DIR="$runtime/sdk" bash scripts/run_tron2_route2.sh \
-  "$vendor" "$runtime/opt" "$run" --tier S2 \
-  --model checkpoints/Qwen2.5-Coder-7B-Instruct \
-  --server-url http://127.0.0.1:18089/v1/chat/completions --trials 1
+  "$vendor" "$runtime/opt" "$run" --tier M3 \
+  --model checkpoints/Qwen2.5-VL-7B-Instruct --model-is-vlm \
+  --server-url http://127.0.0.1:18089/v1/chat/completions \
+  --first-seed 1 --cube-xy-jitter-m 0.02 --trials 20 --max-code-blocks 4
 ```
 
-Use a fresh output directory for `--tier M1`. Use `--max-code-blocks` to set the
-M1 turn budget. To reproduce a recorded CGN batch in a model diagnostic, pass
-`--candidate-file /path/to/candidates.npz`. Check `evaluation/results.json` for
-execution status, reward, regenerations, and recording paths. The per-episode
-artifacts include generated code, model decisions, and video.
+Use a fresh output directory per tier, and keep the seed range and cube reset
+jitter identical for paired runs. The VDM can use the coding endpoint or be set
+separately with `--vdm-model` and `--vdm-server-url`. Replay of a saved CGN
+batch through `--candidate-file` is available for high-level vision diagnostics.
+`evaluation/results.json` records the effective profile, seed, reward, execution
+status and video path for each episode. The per-episode artifacts include
+per-turn execution metrics, generated code, feedback and video.

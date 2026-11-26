@@ -786,6 +786,15 @@ def _run_single_trial(
 
         obs_next, reward, terminated, truncated, info_step = env.step(code)
 
+        if config.get("record_turn_metrics", False):
+            with open(os.path.join(config["output_dir"], "turn_metrics.jsonl"), "a", encoding="utf-8") as metrics:
+                metrics.write(json.dumps({
+                    "turn": code_block_idx,
+                    "sandbox_rc": info_step.get("sandbox_rc"),
+                    "reward": float(reward),
+                    "task_completed": info_step.get("task_completed"),
+                }) + "\n")
+
         # Record frame index after step
         frame_end = env.get_video_frame_count() if recording_frames else 0
         turn_frame_ranges.append((frame_start, frame_end))
@@ -855,6 +864,7 @@ def _run_single_trial(
             elif decision == "finish":
                 all_responses.append({
                     "decision": "finish",
+                    "multi_turn_prompt": decision_prompt if config.get("save_multiturn_prompts", False) else None,
                     "reasoning": mt_reasoning if mt_reasoning is not None else (new_code or ""),
                 })
                 print("Model chose to finish")

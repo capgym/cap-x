@@ -1,0 +1,24 @@
+# S3 evaluates programs using reduced primitives with usage examples.
+env:
+  _target_: capx.envs.tasks.tron2.tron2_cube_lift_reduced.Tron2CubeLiftReducedCodeEnv
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    low_level: tron2_cube_lift_low_level
+    privileged: false
+    enable_render: true
+    apis:
+      - Tron2ControlReducedApi
+
+api_servers:
+  - _target_: capx.serving.launch_sam3_server.main
+    device: cuda
+    port: 8114
+    host: 127.0.0.1
+  - _target_: capx.serving.launch_contact_graspnet_server.main
+    port: 8115
+    host: 127.0.0.1
+
+record_video: true
+output_dir: ./outputs/tron2_cube_lift_visual_reduced
+trials: 100
+num_workers: 1

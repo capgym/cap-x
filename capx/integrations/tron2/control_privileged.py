@@ -7,11 +7,12 @@ from typing import Any
 
 import numpy as np
 
-from capx.integrations.base_api import ApiBase
 from capx.integrations.tron2.official_client import HORIZONTAL_GRASP_QUAT_WXYZ
 
+from .left_motion import Tron2LeftMotionApi
 
-class Tron2ControlPrivilegedApi(ApiBase):
+
+class Tron2ControlPrivilegedApi(Tron2LeftMotionApi):
     """High-level TRON2 dual-arm skill API backed by official Tron2_controller."""
 
     def functions(self) -> dict[str, Callable[..., Any]]:
@@ -40,34 +41,6 @@ class Tron2ControlPrivilegedApi(ApiBase):
         obs = self._env.get_observation()
         return np.asarray(obs["red_cube_pos_base"], dtype=np.float64)
 
-    def get_left_ee_pose(self) -> tuple[np.ndarray, np.ndarray]:
-        """Get the left gripper fingertip (TCP) pose in base_Link frame.
-
-        Returns:
-            Tuple of (position (3,), quaternion_wxyz (4,)).
-        """
-        pose = self._env.client.get_move_pose()
-        return pose.left_pos.copy(), pose.left_quat.copy()
-
-    def goto_pose_left(
-        self,
-        pos: list[float] | np.ndarray,
-        quat_wxyz: list[float] | np.ndarray | None = None,
-        duration_sec: float = 2.0,
-    ) -> bool:
-        """Move the left gripper fingertip (TCP) to a target pose in base_Link frame via official MoveP.
-
-        Args:
-            pos: Target [x, y, z] position in meters relative to base_Link.
-            quat_wxyz: Target orientation [w, x, y, z]. Defaults to horizontal forward grasp.
-            duration_sec: Planned motion duration in seconds.
-        """
-        quat = HORIZONTAL_GRASP_QUAT_WXYZ if quat_wxyz is None else quat_wxyz
-        response = self._env.move_arms_pose(
-            left_pos=pos, left_quat_wxyz=quat, duration_sec=duration_sec, report_joint_limit=True,
-        )
-        return response.get("result") == "success"
-
     def goto_pose_right(
         self,
         pos: list[float] | np.ndarray,
@@ -89,11 +62,13 @@ class Tron2ControlPrivilegedApi(ApiBase):
 
     def open_gripper_left(self) -> None:
         """Open the left parallel gripper fully (~7.5 cm)."""
-        self._env.set_gripper("left", 1.0)
+        with self._env.motion_feedback("open"):
+            self._env.set_gripper("left", 1.0)
 
     def close_gripper_left(self) -> None:
         """Close the left parallel gripper smoothly to clamp an object."""
-        self._env.set_gripper("left", 0.0)
+        with self._env.motion_feedback("close"):
+            self._env.set_gripper("left", 0.0)
 
     def open_gripper_right(self) -> None:
         """Open the right parallel gripper fully (~7.5 cm)."""

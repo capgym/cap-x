@@ -112,6 +112,7 @@ class Tron2CubeLiftLowLevel(BaseEnv):
         self.enable_render = enable_render
         self.viser_debug = viser_debug
         self.max_steps = max_steps
+        self.cube_xy_jitter_m = 0.0
 
         self.xml_path = Path(xml_path) if xml_path is not None else _DEFAULT_XML
         self.primary_camera = primary_camera
@@ -483,6 +484,8 @@ class Tron2CubeLiftLowLevel(BaseEnv):
     def _reset_cube(self, data: mujoco.MjData) -> None:
         start = self._cube_qpos_adr
         data.qpos[start:start + 7] = [0.52, 0.15, 0.875, 1.0, 0.0, 0.0, 0.0]
+        if self.cube_xy_jitter_m:
+            data.qpos[start:start + 2] += self._rng.uniform(-self.cube_xy_jitter_m, self.cube_xy_jitter_m, size=2)
         dof = self.model.jnt_dofadr[self._cube_jnt_id]
         data.qvel[dof:dof + 6] = 0.0
 

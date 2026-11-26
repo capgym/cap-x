@@ -140,3 +140,10 @@ try:
     register_api("Tron2ControlCgnOnlyApi", Tron2ControlCgnOnlyApi)
 except ImportError as exc:
     print(f"TRON2 CGN-only API not available, skipping: {exc}")
+
+try:
+    from .tron2.control_reduced import Tron2ControlReducedApi, Tron2ControlReducedExamplelessApi
+    register_api("Tron2ControlReducedApi", Tron2ControlReducedApi)
+    register_api("Tron2ControlReducedExamplelessApi", Tron2ControlReducedExamplelessApi)
+except ImportError as exc:
+    print(f"TRON2 reduced APIs not available, skipping: {exc}")
