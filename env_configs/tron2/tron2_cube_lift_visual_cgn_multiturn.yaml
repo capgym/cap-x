@@ -1,4 +1,4 @@
-# Strict CGN with console feedback for multi-turn model evaluation.
+# Visual CGN suggestions with console feedback for multi-turn model evaluation.
 env:
   _target_: capx.envs.tasks.tron2.tron2_cube_lift_visual.Tron2CubeLiftVisualCodeEnv
   cfg:
@@ -25,14 +25,20 @@ env:
       A successful motion return or a small TCP error only confirms arm motion. Use
       get_object_pose("red cube") to check the cube position if its motion is unclear.
       Build the lift target from grasp_pos returned by sample_grasp_pose by increasing
-      only Z, and keep the same grasp_quat. get_object_pose reports the cube center.
+      only Z, and keep the same grasp_quat. Recompute the lift target if you change grasps.
+      get_object_pose reports the cube center.
       A 0.12 to 0.16 m tool lift allows some margin for the 0.10 m cube-height goal.
       If the previous code reached the selected grasp and closed the gripper, you can
       correct the lift command from that state. Keep the cube held through evaluation.
       Read the motion stage and measured TCP before deciding how to recover.
+      get_left_ee_pose() gives the current TCP. goto_pose_left accepts position and
+      orientation targets in base_Link. Use an omitted quaternion to keep the current
+      orientation. A rejected or missed motion returns False and logs the measured TCP.
       TABLE_CONTACT gives the link and measured contact load. Contact alone can occur
       during an otherwise successful move. If the controller rejects a target or the
       arm does not reach it, plan your next action from the resulting pose.
+      A planned_point in a controller rejection is a point in its plan. Read
+      TCP_AFTER_REJECTION to see where the arm actually is.
       If the selected approach fails to plan, you can choose another CGN proposal with
       sample_grasp_pose("red cube", candidate_rank=1), or choose the other assignment
       of the jaws for the same rank with jaw_branch=0 or jaw_branch=1.

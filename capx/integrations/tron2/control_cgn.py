@@ -1,4 +1,4 @@
-"""Strict visual left-arm grasping with poses proposed by Contact-GraspNet."""
+"""TRON2 TCP motion and visual grasp suggestions from Contact-GraspNet."""
 
 from __future__ import annotations
 
@@ -26,7 +26,6 @@ from .grasp_quality import candidate_tcp_positions, rank_grasps
 # Distance from the CGN gripper base to its predicted contact midpoint
 # (ContactGraspNet.build_6d_grasp, for this checkpoint's center_to_tip=0).
 _CGN_DEPTH_M = 0.1034
-_APPROACH_M = 0.11
 _JAW_SYMMETRY = np.diag([-1.0, -1.0, 1.0])
 
 
@@ -66,15 +65,13 @@ def _approach_waypoints(target: np.ndarray, quat: np.ndarray, offset: float) -> 
 
 
 class Tron2ControlCgnOnlyApi(ApiBase):
-    """Execute left-arm poses selected from CGN with the tabletop lift trajectory."""
+    """Control TRON2 TCP poses and sample visual grasp proposals."""
 
     def __init__(self, env: BaseEnv) -> None:
         super().__init__(env)
         self.sam3_seg_fn = init_sam3()
         self.grasp_net_plan_fn = init_contact_graspnet()
         self._plan_clouds = init_contact_graspnet_point_clouds()
-        self._pending = None
-        self._approach_reached = False
 
     def functions(self) -> dict[str, Callable[..., Any]]:
         return {
@@ -233,8 +230,6 @@ class Tron2ControlCgnOnlyApi(ApiBase):
         the gripper geometry score chooses the assignment. Live calls observe
         the scene again. Motion is planned when goto_pose_left() is called.
         """
-        self._pending = None
-        self._approach_reached = False
         rank = int(os.environ.get("CAPX_TRON2_CGN_RANK", "0")) if candidate_rank is None else candidate_rank
         if not isinstance(rank, (int, np.integer)) or rank < 0:
             raise ValueError("candidate_rank must be a nonnegative integer")
@@ -295,7 +290,6 @@ class Tron2ControlCgnOnlyApi(ApiBase):
             if branch == 1:
                 rotation = rotation @ _JAW_SYMMETRY
             q = _rotmat_to_quat_wxyz(rotation)
-            self._pending = (p.copy(), q.copy(), rotation)
             print(f"[CGN-only] selected camera={name} zero_based_index={i} score={scores[i]:.5f} jaw_branch={branch} "
                   f"contact_midpoint={contacts[i].tolist()} tcp={p.tolist()} quat_wxyz={q.tolist()} "
                   f"approach_base={rotations[i, :, 2].tolist()}")
@@ -307,7 +301,6 @@ class Tron2ControlCgnOnlyApi(ApiBase):
 
     def home_pose(self) -> None:
         """Move both arms to the safe raised ready pose via official MoveJ and open both grippers."""
-        self._approach_reached = False
         self._env.move_home()
 
     def get_left_ee_pose(self) -> tuple[np.ndarray, np.ndarray]:
@@ -319,84 +312,99 @@ class Tron2ControlCgnOnlyApi(ApiBase):
         pose = self._env.client.get_move_pose()
         return pose.left_pos.copy(), pose.left_quat.copy()
 
-    def _verify_left_tcp(self, target: np.ndarray, quat: np.ndarray, stage: str) -> bool:
+    def _verify_left_tcp(self, target: np.ndarray, quat: np.ndarray, stage: str, backend: str) -> bool:
         pose = self._env.client.get_move_pose()
         distance = np.linalg.norm(pose.left_pos - target)
         angle = np.degrees(2 * np.arccos(np.clip(abs(np.dot(quat, pose.left_quat)), 0, 1)))
         reached = bool(distance <= 0.005 and angle <= 3)
         print(f"[CGN-only] {stage} measured TCP error {distance * 1000:.2f} mm / {angle:.2f} deg "
               f"actual_pos={pose.left_pos.tolist()} actual_quat_wxyz={pose.left_quat.tolist()} "
-              f"target_pos={target.tolist()} reached={reached}")
+              f"target_pos={target.tolist()} backend={backend} reached={reached}")
         return reached
 
-    def _move_left_checked(self, stage, target, quat, rotation, duration_sec, *, upward=False) -> bool:
+    def _move_left_checked(
+        self, stage: str, target: np.ndarray, quat: np.ndarray, rotation: np.ndarray, duration_sec: float, backend: str,
+    ) -> bool:
         with self._env.motion_feedback(stage):
-            path, reason = plan_left_tcp_motion(self._env, target, rotation, upward=upward)
-            if path is None:
-                print(f"[CGN-only] WARNING: {stage} local planning rejected: {reason}", file=sys.stderr)
-                self._env.record_rejected_motion()
-                self._verify_left_tcp(target, quat, stage)
-                return False
-            sent = self._env.move_left_joint_path(path, duration_sec)
-            reached = self._verify_left_tcp(target, quat, stage)
+            if backend == "movep":
+                result = self._env.move_arms_pose(
+                    left_pos=target, left_quat_wxyz=quat, duration_sec=duration_sec, stage=stage,
+                    report_motion_rejection=True,
+                )
+                sent = result.get("result") == "success"
+            else:
+                path, reason = plan_left_tcp_motion(self._env, target, rotation)
+                if path is None:
+                    print(f"[CGN-only] WARNING: {stage} local planning rejected: {reason}", file=sys.stderr)
+                    self._env.record_rejected_motion()
+                    self._verify_left_tcp(target, quat, stage, backend)
+                    return False
+                sent = self._env.move_left_joint_path(path, duration_sec)
+            reached = self._verify_left_tcp(target, quat, stage, backend)
         if not sent:
-            print(f"[CGN-only] WARNING: {stage} controller execution stopped before the path completed.",
+            print(f"[CGN-only] WARNING: {stage} {backend} execution did not complete.",
                   file=sys.stderr)
         elif not reached:
             print(f"[CGN-only] WARNING: {stage} finished dispatch without reaching the requested TCP.",
                   file=sys.stderr)
         return sent and reached
 
-    def goto_pose_left(self, pos, quat_wxyz=None, approach_offset=0.0, duration_sec=2.0) -> bool:
-        """Approach the selected CGN pose or request a checked vertical lift.
+    def goto_pose_left(
+        self,
+        pos: list[float] | np.ndarray,
+        quat_wxyz: list[float] | np.ndarray | None = None,
+        approach_offset: float = 0.0,
+        duration_sec: float = 2.0,
+        *,
+        stage: str = "free-motion",
+    ) -> bool:
+        """Move the left TCP to a position and orientation in the base_Link frame.
 
-        Approach with a 0.11 m backoff, then close the gripper. To lift, keep
-        the grasp X/Y and orientation, add a positive Z offset (for example,
-        0.12 m or 0.16 m), and omit approach_offset. The lift path is checked
-        from the current robot state. Local planning rejection, controller
-        rejection or a missed waypoint returns False. After an approach
-        failure, explicitly choose another rank or jaw_branch. After a lift
-        failure, you can request a shorter upward offset from the same grasp.
+        Args:
+            pos: Target [x, y, z] in meters.
+            quat_wxyz: Target orientation [w, x, y, z]. Omit to keep the measured orientation.
+            approach_offset: Optional backoff in meters along the tool's +Z axis. A positive
+                offset moves above the pre-grasp, to the pre-grasp, then to the target.
+            duration_sec: Requested duration in seconds per stage.
+            stage: Log label for a direct move, such as "lift".
+
+        Returns:
+            True when the motion reaches the target. Planning or controller rejection,
+            or a missed endpoint, returns False and leaves the arm at its resulting pose.
         """
-        if self._pending is None:
-            raise RuntimeError("Call sample_grasp_pose before executing the CGN trajectory")
-        grasp, quat, rotation = self._pending
+        backend = os.environ.get("CAPX_TRON2_LEFT_MOTION", "movej").lower()
+        if backend not in ("movej", "movep"):
+            raise ValueError("CAPX_TRON2_LEFT_MOTION must be movej or movep")
         target = np.asarray(pos, dtype=float).reshape(3)
         if not np.isfinite(target).all():
             raise ValueError("The requested TCP position must be finite")
+        approach_offset = float(approach_offset)
+        if not np.isfinite(approach_offset) or approach_offset < 0:
+            raise ValueError("Approach offset must be finite and nonnegative")
+        duration_sec = float(duration_sec)
         if not np.isfinite(duration_sec) or duration_sec <= 0:
             raise ValueError("Motion duration must be finite and positive")
-        supplied_quat = quat if quat_wxyz is None else np.asarray(quat_wxyz, dtype=float).reshape(4)
-        if not (np.allclose(supplied_quat, quat) or np.allclose(supplied_quat, -quat)):
-            raise ValueError("The requested orientation differs from the selected CGN pose")
-        if np.allclose(target, grasp) and np.isclose(approach_offset, _APPROACH_M):
-            self._approach_reached = False
-            waypoints = cgn_approach_waypoints(grasp, rotation, _APPROACH_M)
-            for stage, waypoint in zip(("above", "pre-grasp", "contact"), waypoints, strict=True):
-                if not self._move_left_checked(stage, waypoint, quat, rotation, duration_sec):
-                    return False
-            self._approach_reached = True
-            return True
-        elif (np.isclose(approach_offset, 0) and np.allclose(target[:2], grasp[:2])
-              and target[2] > grasp[2]):
-            if not self._approach_reached:
-                print("[CGN-only] WARNING: lift skipped because the checked approach was incomplete.",
-                      file=sys.stderr)
-                with self._env.motion_feedback("lift"):
-                    self._env.record_rejected_motion()
-                    self._verify_left_tcp(target, quat, "lift")
+        if not isinstance(stage, str) or not stage.strip() or not stage.isprintable():
+            raise ValueError("Stage must be a nonempty, printable label")
+        supplied_quat = self.get_left_ee_pose()[1] if quat_wxyz is None else quat_wxyz
+        quat = np.asarray(supplied_quat, dtype=float).reshape(4)
+        scale = np.max(np.abs(quat))
+        if not np.isfinite(scale) or scale == 0:
+            raise ValueError("The requested orientation must be a finite, nonzero WXYZ quaternion")
+        quat = quat / scale
+        quat /= np.linalg.norm(quat)
+        rotation = _quat_wxyz_to_rotmat(quat)
+        if approach_offset == 0:
+            return self._move_left_checked(stage, target, quat, rotation, duration_sec, backend)
+
+        with np.errstate(over="ignore"):
+            waypoints = cgn_approach_waypoints(target, rotation, approach_offset)
+        if not np.isfinite(waypoints).all():
+            raise ValueError("Approach offset generates a nonfinite waypoint")
+        for phase, waypoint in zip(("above", "pre-grasp", "contact"), waypoints, strict=True):
+            if not self._move_left_checked(phase, waypoint, quat, rotation, duration_sec, backend):
                 return False
-            reached = self._move_left_checked("lift", target, quat, rotation, duration_sec, upward=True)
-            if reached:
-                self._pending = None
-                self._approach_reached = False
-            return reached
-        else:
-            raise ValueError(
-                f"Requested offset from the selected CGN grasp: {(target - grasp).tolist()} m. "
-                f"For the checked approach use goto_pose_left(grasp_pos, grasp_quat, approach_offset={_APPROACH_M}). "
-                "For a checked lift add a positive Z offset to grasp_pos and keep grasp_quat."
-            )
+        return True
 
     def goto_pose_right(
         self,
@@ -428,7 +436,6 @@ class Tron2ControlCgnOnlyApi(ApiBase):
 
     def open_gripper_left(self) -> None:
         """Open the left parallel gripper fully (~7.5 cm)."""
-        self._approach_reached = False
         with self._env.motion_feedback("open"):
             self._env.set_gripper("left", 1.0)
 

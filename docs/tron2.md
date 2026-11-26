@@ -26,6 +26,12 @@ when requested. MuJoCo resolves table contact, and the action log reports each
 loaded link with its peak normal load and contact duration. Run the standalone
 motor probe in its own test session because it also publishes motor state.
 
+`goto_pose_left()` accepts a position and WXYZ quaternion in the `base_Link`
+frame. It uses the measured orientation if the quaternion is omitted. Pass a
+positive `approach_offset` for a staged approach or omit it for one direct move.
+Set `CAPX_TRON2_LEFT_MOTION=movep` to evaluate official Cartesian motion. The
+default uses local IK and MoveJ. Both paths verify the measured TCP afterward.
+
 ## Worktrees and runtime files
 
 | Host and location | Use |

@@ -24,6 +24,7 @@ from capx.integrations.tron2.official_client import (
     DEFAULT_HOME_Q16,
     PROTOCOL_JOINT_NAMES,
     Tron2JointLimitRejection,
+    Tron2MotionRejection,
     Tron2OfficialClient,
 )
 
@@ -332,8 +333,10 @@ class Tron2CubeLiftLowLevel(BaseEnv):
         right_quat_wxyz: np.ndarray | list[float] | None = None,
         duration_sec: float = 2.0,
         report_joint_limit: bool = True,
+        report_motion_rejection: bool = False,
+        stage: str = "pose",
     ) -> dict[str, Any]:
-        """Move either arm via MoveP, optionally reporting joint-limit rejections as responses."""
+        """Move either arm via MoveP and optionally return valid controller rejections."""
         self._ensure_connected()
         cur_pose = self.client.get_move_pose()
         l_pos = np.asarray(left_pos, dtype=np.float64) if left_pos is not None else cur_pose.left_pos
@@ -343,17 +346,42 @@ class Tron2CubeLiftLowLevel(BaseEnv):
 
         try:
             resp = self.client.move_p(l_pos, l_quat, r_pos, r_quat, duration_sec=duration_sec)
-        except Tron2JointLimitRejection as error:
-            if not report_joint_limit:
+        except Tron2MotionRejection as error:
+            joint_limit = isinstance(error, Tron2JointLimitRejection)
+            if not (report_motion_rejection or (report_joint_limit and joint_limit)):
                 raise
-            self._record_joint_limit_rejection(error)
+            self._log_motion_rejection(error, stage)
+            self.record_rejected_motion()
+            actual = self.client.get_move_pose()
+            for side, requested in (
+                ("left", left_pos is not None or left_quat_wxyz is not None),
+                ("right", right_pos is not None or right_quat_wxyz is not None),
+            ):
+                if requested:
+                    pos = getattr(actual, f"{side}_pos")
+                    quat = getattr(actual, f"{side}_quat")
+                    displacement = 1000 * np.linalg.norm(pos - getattr(cur_pose, f"{side}_pos"))
+                    print(f"[TRON2] TCP_AFTER_REJECTION stage={stage} arm={side} base_link_pos_m={pos.tolist()} "
+                          f"quat_wxyz={quat.tolist()} displacement_since_request_mm={displacement:.3f}")
             return error.response
         self._wait_and_record(duration_sec + 0.5)
         self._step_count += 1
         return resp
 
-    def _record_joint_limit_rejection(self, error: Tron2JointLimitRejection) -> None:
-        print(f"[TRON2] CONTROLLER_JOINT_LIMIT {error.response['message']}")
+    def _log_motion_rejection(self, error: Tron2MotionRejection, stage: str) -> None:
+        context = f"stage={stage} result={error.response['result']}"
+        event = "CONTROLLER_MOTION_REJECTED"
+        if isinstance(error, Tron2JointLimitRejection):
+            event = "CONTROLLER_JOINT_LIMIT"
+            if error.joint_index is not None and 0 <= error.joint_index < len(PROTOCOL_JOINT_NAMES):
+                context += f" joint_index={error.joint_index} joint={PROTOCOL_JOINT_NAMES[error.joint_index]}"
+            if error.planned_point is not None:
+                context += f" planned_point={error.planned_point}"
+        print(f"[TRON2] {event} {context}")
+        print(error.response["message"])
+
+    def _record_joint_limit_rejection(self, error: Tron2JointLimitRejection, stage: str = "joint-motion") -> None:
+        self._log_motion_rejection(error, stage)
         self.record_rejected_motion()
 
     def record_rejected_motion(self) -> None:

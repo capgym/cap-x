@@ -10,9 +10,10 @@ Coordinate frame (base_Link):
 - +X is forward (toward the table), +Y is left, +Z is up.
 - All positions are [x, y, z] in meters relative to base_Link.
 - Use `sample_grasp_pose("red cube")` to get a ranked CGN grasp candidate (grasp_pos, grasp_quat).
+- `goto_pose_left` accepts a left TCP position and WXYZ orientation in the base frame. Omit the orientation to keep the measured orientation. Use `get_left_ee_pose()` to read the current TCP.
 - Always open the gripper before approaching, use `approach_offset=0.11` in `goto_pose_left` to approach cleanly without knocking the cube over, close the gripper, then lift vertically (+Z).
-- Check the return from `goto_pose_left`. If the approach fails, select and plan a new grasp before closing the gripper.
-- The `grasp_pos` returned by `sample_grasp_pose` is the tool-center position. Build the lift target from that same `grasp_pos` by increasing only Z and keeping `grasp_quat`. `get_object_pose` reports the cube center for perception checks.
+- Check the return from `goto_pose_left`. A rejected or missed motion returns `False` and logs the measured TCP. If the approach fails, use the measured pose to decide how to approach again before closing the gripper.
+- Build the lift target from the grasp pose that actually reached the cube. After changing candidates, recompute the target from the new `grasp_pos` by increasing only Z and keeping the new `grasp_quat`. Use `stage="lift"` to label the motion. `get_object_pose` reports the cube center for perception checks.
 - A 0.12 to 0.16 m tool lift allows some margin for the 0.10 m cube-height goal.
 - Leave the cube held above the table at the end of execution.
 
@@ -28,7 +29,7 @@ open_gripper_left()
 if goto_pose_left(grasp_pos, grasp_quat, approach_offset=0.11):
     close_gripper_left()
     lift_pos = grasp_pos + np.array([0.0, 0.0, 0.16])
-    goto_pose_left(lift_pos, grasp_quat)
+    goto_pose_left(lift_pos, grasp_quat, stage="lift")
 """
 
 

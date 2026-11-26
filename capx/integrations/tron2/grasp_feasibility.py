@@ -121,13 +121,9 @@ class _LeftArmIK:
         pos, rot = self.pose(fit.x)
         return fit.x, float(np.linalg.norm(pos - position)), float((Rotation.from_matrix(rot) * rotation_inv).magnitude())
 
-    def plan(
-        self, position: np.ndarray, rotation: np.ndarray, *, upward: bool,
-    ) -> tuple[np.ndarray | None, str | None]:
+    def plan(self, position: np.ndarray, rotation: np.ndarray) -> tuple[np.ndarray | None, str | None]:
         q = self.start.copy()
         start_pos, start_mat = self.pose(q)
-        if upward and position[2] <= start_pos[2]:
-            return None, f"requested Z {position[2]:.4f} m is at or below measured Z {start_pos[2]:.4f} m"
         start_rot = Rotation.from_matrix(start_mat)
         delta_rot = (start_rot.inv() * Rotation.from_matrix(rotation)).as_rotvec()
         with np.errstate(over="ignore"):
@@ -163,10 +159,10 @@ class _LeftArmIK:
 
 
 def plan_left_tcp_motion(
-    env: Tron2CubeLiftLowLevel, position: np.ndarray, rotation: np.ndarray, *, upward: bool = False,
+    env: Tron2CubeLiftLowLevel, position: np.ndarray, rotation: np.ndarray,
 ) -> tuple[np.ndarray | None, str | None]:
     """Plan this motion from the measured state. Table contacts are simulated during dispatch."""
-    return _LeftArmIK(env).plan(position, rotation, upward=upward)
+    return _LeftArmIK(env).plan(position, rotation)
 
 
 def cgn_approach_waypoints(position: np.ndarray, rotation: np.ndarray, offset: float):

@@ -49,29 +49,45 @@ DEFAULT_HOME_Q16: list[float] = [
 HORIZONTAL_GRASP_QUAT_WXYZ: list[float] = [0.70710678, 0.0, -0.70710678, 0.0]
 
 
-class Tron2JointLimitRejection(RuntimeError):
-    """The controller rejected a motion at a joint position limit."""
+class Tron2MotionRejection(RuntimeError):
+    """The controller returned a valid response declining a motion."""
 
     def __init__(self, motion: str, response: dict[str, Any]) -> None:
         self.response = response
         super().__init__(f"{motion} rejected by controller: {response}")
 
 
+class Tron2JointLimitRejection(Tron2MotionRejection):
+    """A declined motion whose response identifies a joint position limit."""
+
+    def __init__(self, motion: str, response: dict[str, Any], *,
+                 joint_index: int | None = None, planned_point: str | None = None) -> None:
+        super().__init__(motion, response)
+        self.joint_index = joint_index
+        self.planned_point = planned_point
+
+
 _ANGLE = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?"
 _MOVE_P_POSITION_LIMIT = re.compile(
-    rf"moveP joint\[\d+\] {_ANGLE} out of \[\s*{_ANGLE},\s*{_ANGLE}\s*\] at point \d+/\d+, abort",
+    rf"(?:WARN:\s*)?moveP joint\[(?P<joint>\d+)\] {_ANGLE} out of "
+    rf"\[\s*{_ANGLE},\s*{_ANGLE}\s*\] at point (?P<point>\d+/\d+), abort",
     re.IGNORECASE,
 )
-_MOVE_J_POSITION_LIMIT = re.compile(r"(?:WARN:\s*)?moveJ joint\[\d+\] out of range", re.IGNORECASE)
+_MOVE_J_POSITION_LIMIT = re.compile(r"(?:WARN:\s*)?moveJ joint\[(?P<joint>\d+)\] out of range", re.IGNORECASE)
 
 
 def _raise_if_motion_rejected(motion: str, data: dict[str, Any], position_limit_message: re.Pattern[str]) -> None:
-    if data.get("result") == "success":
+    result = data.get("result")
+    if result == "success":
         return
     message = data.get("message")
-    if isinstance(message, str) and position_limit_message.fullmatch(message.strip()):
-        raise Tron2JointLimitRejection(motion, data)
-    raise RuntimeError(f"{motion} rejected by controller: {data}")
+    if not (isinstance(result, str) and result and isinstance(message, str) and message):
+        raise RuntimeError(f"Invalid {motion} response from controller: {data}")
+    limit = position_limit_message.fullmatch(message.strip())
+    if limit is not None:
+        raise Tron2JointLimitRejection(motion, data, joint_index=int(limit["joint"]),
+                                      planned_point=limit.groupdict().get("point"))
+    raise Tron2MotionRejection(motion, data)
 
 
 @dataclass
