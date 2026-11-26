@@ -4,6 +4,7 @@ set -euo pipefail
 usage() {
     cat <<'USAGE'
 Usage: bash scripts/run_tron2_route2.sh VENDOR_DIR TEST_OPT_DIR OUTPUT_DIR [SWEEP_ARGS]
+       bash scripts/run_tron2_route2.sh VENDOR_DIR TEST_OPT_DIR OUTPUT_DIR --tier S2|M1 --model MODEL [MODEL_ARGS]
 
 Run a recorded CGN sweep with the official controller and one Python MuJoCo
 world in a private Linux namespace. OUTPUT_DIR must be new.
@@ -14,6 +15,9 @@ TEST_OPT_DIR Directory containing the simulated controller's test /opt fixture.
 Optional env vars: CUDA_VISIBLE_DEVICES, TRON2_PYTHON (default .venv/bin/python),
 TRON2_SDK_DIR (directory containing limxsdk if it is outside the venv).
 SWEEP_ARGS can include --fresh-trials 1, --ranks 0 1, or --candidate-file FILE.
+MODEL_ARGS can include --server-url http://127.0.0.1:18089/v1/chat/completions,
+--trials 1, --max-tokens 1024, or --max-code-blocks 4. Run the model server on the
+host loopback before launching. The optional TRON2_MODEL_API_KEY is passed to it.
 USAGE
 }
 
@@ -55,8 +59,22 @@ fi
 
 # Resolve filesystem arguments before the namespace launcher changes directory.
 sweep_args=()
+tier=
+model_url=http://127.0.0.1:18089/v1/chat/completions
 while (( $# )); do
     case "$1" in
+        --tier|--server-url)
+            if (( $# < 2 )); then
+                printf 'A value is required after %s.\n' "$1" >&2
+                exit 2
+            fi
+            if [[ $1 == --tier ]]; then
+                tier=$2
+            else
+                model_url=$2
+            fi
+            shift 2
+            ;;
         --candidate-file)
             if (( $# < 2 )); then
                 printf 'A path is required after --candidate-file.\n' >&2
@@ -72,8 +90,47 @@ while (( $# )); do
     esac
 done
 
-exec unshare -Urnmpi --fork --mount-proc --propagation private bash -s -- \
-    "$repo" "$vendor" "$test_opt" "$output" "$python" "$sdk" "${sweep_args[@]}" <<'NAMESPACE'
+relay_dir=
+relay_pid=
+relay_socket=
+namespace_prefix=()
+if [[ -n $tier ]]; then
+    if [[ $tier != S2 && $tier != M1 ]]; then
+        printf 'The TRON2 model tier must be S2 or M1.\n' >&2
+        exit 2
+    fi
+    relay_dir=$(mktemp -d /tmp/capx-tron2-relay.XXXXXX)
+    relay_socket=$relay_dir/model.sock
+    cleanup_relay() {
+        if [[ -n $relay_pid ]]; then
+            kill -TERM "$relay_pid" 2>/dev/null || true
+            wait "$relay_pid" 2>/dev/null || true
+        fi
+        rm -f -- "$relay_socket"
+        rmdir -- "$relay_dir"
+    }
+    trap cleanup_relay EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    "$python" "$repo/scripts/run_tron2_model.py" --serve-relay "$relay_socket" --server-url "$model_url" &
+    relay_pid=$!
+    for _ in {1..50}; do
+        [[ -S $relay_socket ]] && break
+        kill -0 "$relay_pid" 2>/dev/null || break
+        sleep 0.1
+    done
+    if [[ ! -S $relay_socket ]]; then
+        printf 'Failed to start the private model relay.\n' >&2
+        exit 1
+    fi
+else
+    # Preserve sweep launcher behavior and signal ownership.
+    namespace_prefix=(exec)
+fi
+
+"${namespace_prefix[@]}" unshare -Urnmpi --fork --mount-proc --propagation private bash -s -- \
+    "$repo" "$vendor" "$test_opt" "$output" "$python" "$sdk" "$tier" "$relay_socket" "$model_url" \
+    "${sweep_args[@]}" <<'NAMESPACE'
 set -euo pipefail
 repo=$1
 vendor=$2
@@ -81,7 +138,10 @@ test_opt=$3
 output=$4
 python=$5
 sdk=$6
-shift 6
+tier=$7
+relay_socket=$8
+model_url=$9
+shift 9
 
 mkdir -p -- "$(dirname -- "$output")"
 mkdir -- "$output"
@@ -139,10 +199,16 @@ controller_listening() {
 }
 
 printf 'Route 2 logs and videos: %s\n' "$output"
-"$python" scripts/sweep_tron2_cgn.py "$@" \
-    --config-path env_configs/tron2/tron2_cube_lift_visual_cgn_only.yaml \
-    --output-dir "$output/evaluation" --route2-startup-dir "$output" \
-    >"$output/tabletop.log" 2>&1 &
+if [[ -n $tier ]]; then
+    "$python" scripts/run_tron2_model.py "$@" --tier "$tier" --relay-socket "$relay_socket" \
+        --server-url "$model_url" --output-dir "$output/evaluation" \
+        --route2-startup-dir "$output" >"$output/tabletop.log" 2>&1 &
+else
+    "$python" scripts/sweep_tron2_cgn.py "$@" \
+        --config-path env_configs/tron2/tron2_cube_lift_visual_cgn_only.yaml \
+        --output-dir "$output/evaluation" --route2-startup-dir "$output" \
+        >"$output/tabletop.log" 2>&1 &
+fi
 tabletop=$!
 children+=("$tabletop")
 wait_for 120 "$tabletop" 'MuJoCo/MROS startup' test -f "$output/motor.ready"

@@ -24,7 +24,8 @@ env:
       ```
       A successful motion return or a small TCP error only confirms arm motion. Use
       get_object_pose("red cube") to check the cube position if its motion is unclear.
-      The checked lift uses a +0.16 m Z offset from grasp_pos and the same grasp_quat.
+      For a checked lift, keep the grasp X/Y and grasp_quat and add a positive Z offset.
+      A 0.12 to 0.16 m tool lift allows some margin for the 0.10 m cube-height goal.
       If the previous code reached the selected grasp and closed the gripper, you can
       correct the lift command from that state. Keep the cube held through evaluation.
       A motion warning means that motion or a subsequent stage may have been skipped.

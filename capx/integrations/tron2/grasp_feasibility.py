@@ -139,7 +139,9 @@ class _LeftArmIK:
         pos, rot = self.pose(fit.x)
         return fit.x, float(np.linalg.norm(pos - position)), float((Rotation.from_matrix(rot) * rotation_inv).magnitude())
 
-    def verify_path(self, index: int, rotation: np.ndarray, waypoints: np.ndarray):
+    def _verify_joint_paths(
+        self, rotation: np.ndarray, waypoints: np.ndarray,
+    ) -> tuple[tuple[np.ndarray, ...], float, float] | None:
         q = self.start.copy()
         start_pos, start_mat = self.pose(q)
         start_rot = Rotation.from_matrix(start_mat)
@@ -148,12 +150,17 @@ class _LeftArmIK:
         max_position_error = max_rotation_error = 0.0
         for position in waypoints:
             delta_rot = (start_rot.inv() * goal_rot).as_rotvec()
-            count = max(1, int(np.ceil(max(
-                np.linalg.norm(position - start_pos) / 0.024,
-                np.linalg.norm(delta_rot) / np.deg2rad(7.0),
-            ))))
+            with np.errstate(over="ignore"):
+                subdivisions = max(
+                    np.linalg.norm(position - start_pos) / 0.024,
+                    np.linalg.norm(delta_rot) / np.deg2rad(7.0),
+                )
+            if not np.isfinite(subdivisions):
+                return None
+            count = max(1, int(np.ceil(subdivisions)))
             segment = [q.copy()]
-            for fraction in np.linspace(0.0, 1.0, count + 1)[1:]:
+            for step in range(1, count + 1):
+                fraction = step / count
                 p = start_pos + fraction * (position - start_pos)
                 r = start_rot * Rotation.from_rotvec(fraction * delta_rot)
                 q_next, pos_error, rot_error = self.solve(p, r, q)
@@ -166,8 +173,28 @@ class _LeftArmIK:
                 q = q_next
             segments.append(np.stack(segment))
             start_pos, start_rot = position, goal_rot
-        return FeasibleGrasp(index, waypoints[2].copy(), rotation.copy(), tuple(segments),
-                             max_position_error, max_rotation_error)
+        return tuple(segments), max_position_error, max_rotation_error
+
+    def verify_path(self, index: int, rotation: np.ndarray, waypoints: np.ndarray) -> FeasibleGrasp | None:
+        checked = self._verify_joint_paths(rotation, waypoints)
+        if checked is None:
+            return None
+        paths, position_error, orientation_error = checked
+        return FeasibleGrasp(index, waypoints[2].copy(), rotation.copy(), paths, position_error, orientation_error)
+
+    def verify_lift(self, position: np.ndarray, rotation: np.ndarray) -> np.ndarray | None:
+        start_pos, _ = self.pose(self.start)
+        if position[2] <= start_pos[2]:
+            return None
+        checked = self._verify_joint_paths(rotation, position[None, :])
+        return checked[0][0] if checked is not None else None
+
+
+def plan_checked_left_lift(
+    env: Tron2CubeLiftLowLevel, position: np.ndarray, rotation: np.ndarray,
+) -> np.ndarray | None:
+    """Check an upward lift from the measured left-arm state and current gripper geometry."""
+    return _LeftArmIK(env).verify_lift(position, rotation)
 
 
 def cgn_waypoints(positions, rotations, approach_offset, lift_height):
