@@ -29,11 +29,11 @@ motor probe in its own test session because it also publishes motor state.
 `goto_pose_left()` accepts a position and WXYZ quaternion in the `base_Link`
 frame. It uses the measured orientation if the quaternion is omitted. Pass a
 positive `approach_offset` for a staged approach or omit it for one direct move.
-Set `CAPX_TRON2_LEFT_MOTION=movep` to evaluate official Cartesian motion. The
-default uses local IK and MoveJ. Set `CAPX_TRON2_LEFT_MOTION=servoj` to use the
-same local IK and stream a time-scaled joint trajectory at 300 Hz. All three
-backends verify the measured TCP afterward. The ServoJ log records the
-actual send rate and original controller notifications.
+By default, local IK plans the path and ServoJ streams the time-scaled joint
+trajectory at 300 Hz. Set `CAPX_TRON2_LEFT_MOTION=movej` to execute the local IK
+waypoints with MoveJ or `CAPX_TRON2_LEFT_MOTION=movep` to use official Cartesian
+motion. All three backends verify the measured TCP afterward. The ServoJ log
+records the actual send rate and original controller notifications.
 
 ## Worktrees and runtime files
 

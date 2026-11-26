@@ -215,6 +215,7 @@ def _evaluate(cli: argparse.Namespace, model_url: str, vdm_url: str | None = Non
     from capx.envs.configs.instantiate import instantiate
     from capx.envs.launch import LaunchArgs
     from capx.envs.runner import _start_api_servers, _stop_api_servers
+    from capx.integrations.tron2.left_motion import get_left_motion_backend
     from capx.llm.client import is_openrouter_model
     from capx.utils.launch_utils import _load_config
 
@@ -269,7 +270,7 @@ def _evaluate(cli: argparse.Namespace, model_url: str, vdm_url: str | None = Non
         "use_img_differencing": config["use_img_differencing"],
         "use_video_differencing": config["use_video_differencing"],
         "record_video": config["record_video"],
-        "left_motion_backend": os.environ.get("CAPX_TRON2_LEFT_MOTION", "movej").lower(),
+        "left_motion_backend": get_left_motion_backend(),
         "first_seed": cli.first_seed,
         "cube_xy_jitter_m": cli.cube_xy_jitter_m,
         "temperature": launch.temperature,

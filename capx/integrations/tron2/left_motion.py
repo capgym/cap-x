@@ -15,6 +15,14 @@ from .grasp_feasibility import cgn_approach_waypoints, plan_left_tcp_motion
 from .servoj import move_left_servoj_path
 
 
+def get_left_motion_backend() -> str:
+    """Return the configured left-arm Cartesian motion backend."""
+    backend = os.environ.get("CAPX_TRON2_LEFT_MOTION", "servoj").lower()
+    if backend not in ("movej", "movep", "servoj"):
+        raise ValueError("CAPX_TRON2_LEFT_MOTION must be movej, movep, or servoj")
+    return backend
+
+
 def _quat_wxyz_to_rotmat(quat_wxyz: np.ndarray | list[float]) -> np.ndarray:
     mat = np.zeros(9, dtype=np.float64)
     mujoco.mju_quat2Mat(mat, np.asarray(quat_wxyz, dtype=np.float64))
@@ -100,9 +108,7 @@ class Tron2LeftMotionApi(ApiBase):
             True when the motion reaches the target. Planning or controller rejection,
             or a missed endpoint, returns False and leaves the arm at its resulting pose.
         """
-        backend = os.environ.get("CAPX_TRON2_LEFT_MOTION", "movej").lower()
-        if backend not in ("movej", "movep", "servoj"):
-            raise ValueError("CAPX_TRON2_LEFT_MOTION must be movej, movep, or servoj")
+        backend = get_left_motion_backend()
         target = np.asarray(pos, dtype=float).reshape(3)
         if not np.isfinite(target).all():
             raise ValueError("The requested TCP position must be finite")
