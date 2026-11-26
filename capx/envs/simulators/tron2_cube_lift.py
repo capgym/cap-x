@@ -53,6 +53,7 @@ class _TableContactFeedback:
                 self.arm_bodies.add(body)
         self.force = np.empty(6)
         self.summary: dict[int, tuple[float, int]] | None = None
+        self.loaded = False
 
     def sample(self, data: mujoco.MjData) -> None:
         if self.summary is None:
@@ -69,6 +70,7 @@ class _TableContactFeedback:
                 mujoco.mj_contactForce(self.model, data, index, self.force)
                 if self.force[0] > 0:
                     body_loads[body] = body_loads.get(body, 0.0) + float(self.force[0])
+        self.loaded = bool(body_loads)
         for body, load in body_loads.items():
             peak_load, loaded_steps = self.summary.get(body, (0.0, 0))
             self.summary[body] = max(peak_load, load), loaded_steps + 1
@@ -295,13 +297,15 @@ class Tron2CubeLiftLowLevel(BaseEnv):
         tracker = self._table_contact_feedback
         summary: dict[int, tuple[float, int]] = {}
         with self._physics_lock:
-            previous = tracker.summary
+            previous, previous_loaded = tracker.summary, tracker.loaded
             tracker.summary = summary
+            tracker.loaded = False
         try:
             yield
         finally:
             with self._physics_lock:
                 tracker.summary = previous
+                tracker.loaded = previous_loaded
             for body, (peak, steps) in sorted(summary.items()):
                 print(f"[TRON2] TABLE_CONTACT stage={stage} link={self.model.body(body).name} "
                       f"peak_normal_force_n={peak:.3f} loaded_duration_s={steps * self.model.opt.timestep:.3f}")
@@ -358,7 +362,7 @@ class Tron2CubeLiftLowLevel(BaseEnv):
         self._step_count += 1
 
     def move_left_joint_path(self, path: np.ndarray, duration_sec: float) -> bool:
-        """Follow one joint path segment. Return false on rejection or settle timeout."""
+        """Follow a joint path. Stop on controller rejection or a timeout against the table."""
         self._ensure_connected()
         for waypoint, left in enumerate(path[1:], start=1):
             q = self._read_arm_joints()
@@ -374,11 +378,16 @@ class Tron2CubeLiftLowLevel(BaseEnv):
             while np.max(np.abs((measured := self._read_arm_joints()[:7]) - left)) > 0.015:
                 if time.monotonic() >= deadline:
                     joint = int(np.argmax(np.abs(measured - left)))
-                    print(f"[TRON2] WAYPOINT_NOT_REACHED waypoint={waypoint}/{len(path) - 1} "
-                          f"joint={PROTOCOL_JOINT_NAMES[joint]} target_rad={left[joint]:.4f} "
-                          f"measured_rad={measured[joint]:.4f}")
-                    self._step_count += 1
-                    return False
+                    with self._physics_lock:
+                        loaded = self._table_contact_feedback.loaded
+                    detail = (f"waypoint={waypoint}/{len(path) - 1} joint={PROTOCOL_JOINT_NAMES[joint]} "
+                              f"target_rad={left[joint]:.4f} measured_rad={measured[joint]:.4f}")
+                    if loaded:
+                        print(f"[TRON2] WAYPOINT_NOT_REACHED {detail} stopped_under_table_load=True")
+                        self._step_count += 1
+                        return False
+                    print(f"[TRON2] WAYPOINT_SETTLE_WARNING {detail} continuing_from_measured_pose=True")
+                    break
                 self._wait_and_record(0.12)
         self._step_count += 1
         return True

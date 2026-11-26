@@ -17,7 +17,8 @@ ROOT = Path(__file__).resolve().parents[1]
 ORACLE_DONE = "[CGN sweep] oracle action sequence completed"
 SELECTION_FIELDS = re.compile(r"\b(camera|zero_based_index|jaw_branch|score)=([^\s]+)")
 MOTION_WARNING = re.compile(
-    r"\[CGN-only\] WARNING:|\bjoint limit:|joint\[\d+\].*out of|CONTROLLER_JOINT_LIMIT|WAYPOINT_NOT_REACHED", re.I,
+    r"\[CGN-only\] WARNING:|\bjoint limit:|joint\[\d+\].*out of|CONTROLLER_JOINT_LIMIT|WAYPOINT_NOT_REACHED|"
+    r"WAYPOINT_SETTLE_WARNING", re.I,
 )
 
 
