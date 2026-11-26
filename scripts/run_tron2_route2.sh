@@ -4,7 +4,7 @@ set -euo pipefail
 usage() {
     cat <<'USAGE'
 Usage: bash scripts/run_tron2_route2.sh VENDOR_DIR TEST_OPT_DIR OUTPUT_DIR [SWEEP_ARGS]
-       bash scripts/run_tron2_route2.sh VENDOR_DIR TEST_OPT_DIR OUTPUT_DIR --tier TIER --model MODEL [MODEL_ARGS]
+       bash scripts/run_tron2_route2.sh VENDOR_DIR TEST_OPT_DIR OUTPUT_DIR --tier TIER [MODEL_ARGS]
 
 Run a recorded CGN sweep with the official controller and one Python MuJoCo
 world in a private Linux namespace. OUTPUT_DIR must be new.
@@ -20,8 +20,9 @@ TIER is S1–S4 (single-turn) or M1–M4 (multi-turn).
 MODEL_ARGS include --server-url http://127.0.0.1:18089/v1/chat/completions,
 --trials 1, --first-seed 1, --cube-xy-jitter-m 0.0, --max-tokens 1024, and
 --max-code-blocks 4. S2 and M1–M3 can also use --candidate-file for batch replay.
-M2 requires an image-capable coding model. M3/M4 use an image differencing model at
---vdm-model MODEL and --vdm-server-url URL, defaulting to the coding model and URL.
+--model defaults to checkpoints/Qwen2.5-Coder-7B-Instruct. M2 requires an
+image-capable coding model. M3/M4 with Qwen-Coder require a separate image
+differencing model at --vdm-model MODEL and --vdm-server-url URL.
 For custom model IDs, pass --model-is-vlm or --vdm-model-is-vlm as appropriate.
 Run the model servers on the host loopback before launching. Optional credentials
 are read from TRON2_MODEL_API_KEY and TRON2_VDM_API_KEY.

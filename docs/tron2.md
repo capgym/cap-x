@@ -101,8 +101,9 @@ to the Mac for inspection.
 
 ## Run the S1–S4 and M1–M4 model profiles
 
-Start an OpenAI-compatible model server on the host loopback, then pass its model
-ID and chat endpoint to the isolated launcher. S1 uses privileged state. S2
+Start an OpenAI-compatible model server on the host loopback and pass its chat
+endpoint to the isolated launcher. The default coding model ID is
+`checkpoints/Qwen2.5-Coder-7B-Instruct`. S1 uses privileged state. S2
 uses RGB-D perception with high-level actions. S3 and S4 use low-level primitives
 with and without usage examples, respectively. M1 adds console feedback, M2 adds
 RGB images for the coding model, and M3 and M4 use textual visual differencing
@@ -111,10 +112,16 @@ with high-level and low-level actions, respectively.
 ```bash
 TRON2_SDK_DIR="$runtime/sdk" bash scripts/run_tron2_route2.sh \
   "$vendor" "$runtime/opt" "$run" --tier M3 \
-  --model checkpoints/Qwen2.5-VL-7B-Instruct --model-is-vlm \
   --server-url http://127.0.0.1:18089/v1/chat/completions \
+  --vdm-model openai/codex-cli-vdm --vdm-model-is-vlm \
+  --vdm-server-url "http://127.0.0.1:$vdm_port/v1/chat/completions" \
   --first-seed 1 --cube-xy-jitter-m 0.02 --trials 20 --max-code-blocks 4
 ```
+
+For this example, expose the authenticated Mac Codex VDM bridge on the host
+loopback through SSH reverse forwarding. Set `vdm_port` to the forwarded port
+and pass the bridge token in `TRON2_VDM_API_KEY`. M2 needs a separate
+vision-capable coding model selected with `--model` and `--model-is-vlm`.
 
 Use a fresh output directory per tier, and keep the seed range and cube reset
 jitter identical for paired runs. The VDM can use the coding endpoint or be set

@@ -32,6 +32,7 @@ _PROFILES = {
 }
 _VDM_TIERS = ("M3", "M4")
 _CGN_REPLAY_TIERS = ("S2", "M1", "M2", "M3")
+_CODER_MODEL = "checkpoints/Qwen2.5-Coder-7B-Instruct"
 
 
 class _RelayHandler(socketserver.BaseRequestHandler):
@@ -124,7 +125,7 @@ def _check_vision_endpoint(model: str, url: str, api_key: str | None, declared_v
         image_url = "data:image/png;base64," + base64.b64encode(image.getvalue()).decode("ascii")
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
     response = requests.post(
-        url, headers=headers, timeout=120,
+        url, headers=headers, timeout=200,
         json={"model": model, "max_tokens": 512, "messages": [{"role": "user", "content": [
             {"type": "text", "text": "What color fills this image? Answer using one English color word."},
             {"type": "image_url", "image_url": {"url": image_url}},
@@ -323,7 +324,7 @@ def main() -> int:
     parser.add_argument("--relay-socket", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--vdm-relay-socket", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--tier", choices=tuple(_PROFILES))
-    parser.add_argument("--model")
+    parser.add_argument("--model", default=_CODER_MODEL, help=f"Coding model. Defaults to {_CODER_MODEL}.")
     parser.add_argument("--server-url", required=True)
     parser.add_argument("--model-is-vlm", action="store_true", help="Declare a custom served coding model as image-capable.")
     parser.add_argument("--vdm-model", help="Image differencing model for M3/M4. Defaults to --model.")
@@ -354,7 +355,12 @@ def main() -> int:
         return 0
 
     if not all((cli.tier, cli.model, cli.output_dir, cli.route2_startup_dir, cli.relay_socket)):
-        parser.error("Use scripts/run_tron2_route2.sh --tier S1–S4 or M1–M4 with --model")
+        parser.error("Use scripts/run_tron2_route2.sh --tier S1–S4 or M1–M4")
+    if cli.model == _CODER_MODEL:
+        if cli.tier == "M2":
+            parser.error("M2 supplies raw RGB to the coding model. Set --model to a vision-capable coder.")
+        if cli.tier in _VDM_TIERS and not cli.vdm_model:
+            parser.error("Set --vdm-model and --vdm-server-url for image differencing with Qwen-Coder.")
     if min(cli.trials, cli.max_tokens) <= 0 or (cli.max_code_blocks is not None and cli.max_code_blocks <= 0):
         parser.error("--trials, --max-tokens and --max-code-blocks must be positive")
     if cli.candidate_file is not None and not cli.candidate_file.is_file():
