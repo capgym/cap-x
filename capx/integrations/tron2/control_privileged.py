@@ -54,7 +54,7 @@ class Tron2ControlPrivilegedApi(ApiBase):
         pos: list[float] | np.ndarray,
         quat_wxyz: list[float] | np.ndarray | None = None,
         duration_sec: float = 2.0,
-    ) -> None:
+    ) -> bool:
         """Move the left gripper fingertip (TCP) to a target pose in base_Link frame via official MoveP.
 
         Args:
@@ -63,14 +63,17 @@ class Tron2ControlPrivilegedApi(ApiBase):
             duration_sec: Planned motion duration in seconds.
         """
         quat = HORIZONTAL_GRASP_QUAT_WXYZ if quat_wxyz is None else quat_wxyz
-        self._env.move_arms_pose(left_pos=pos, left_quat_wxyz=quat, duration_sec=duration_sec)
+        response = self._env.move_arms_pose(
+            left_pos=pos, left_quat_wxyz=quat, duration_sec=duration_sec, report_joint_limit=True,
+        )
+        return response.get("result") == "success"
 
     def goto_pose_right(
         self,
         pos: list[float] | np.ndarray,
         quat_wxyz: list[float] | np.ndarray | None = None,
         duration_sec: float = 2.0,
-    ) -> None:
+    ) -> bool:
         """Move the right gripper fingertip (TCP) to a target pose in base_Link frame via official MoveP.
 
         Args:
@@ -79,7 +82,10 @@ class Tron2ControlPrivilegedApi(ApiBase):
             duration_sec: Planned motion duration in seconds.
         """
         quat = HORIZONTAL_GRASP_QUAT_WXYZ if quat_wxyz is None else quat_wxyz
-        self._env.move_arms_pose(right_pos=pos, right_quat_wxyz=quat, duration_sec=duration_sec)
+        response = self._env.move_arms_pose(
+            right_pos=pos, right_quat_wxyz=quat, duration_sec=duration_sec, report_joint_limit=True,
+        )
+        return response.get("result") == "success"
 
     def open_gripper_left(self) -> None:
         """Open the left parallel gripper fully (~7.5 cm)."""

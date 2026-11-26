@@ -3,6 +3,7 @@ import base64
 import functools
 import io
 import logging
+from pathlib import Path
 from typing import Any, List, Tuple
 
 import numpy as np
@@ -256,8 +257,13 @@ def main(
 
     logger.info("Loading SAM3 model...")
     try:
-        # Assuming build_sam3_image_model loads default checkpoint
-        _MODEL = build_sam3_image_model(enable_inst_interactivity=True)
+        local_checkpoint = Path(__file__).resolve().parents[2] / "checkpoints/sam3/sam3.pt"
+        if local_checkpoint.is_file():
+            logger.info("Using local SAM3 checkpoint %s", local_checkpoint)
+        _MODEL = build_sam3_image_model(
+            checkpoint_path=str(local_checkpoint) if local_checkpoint.is_file() else None,
+            enable_inst_interactivity=True,
+        )
     except Exception as e:
         logger.error(f"Error building SAM3 model: {e}")
         raise

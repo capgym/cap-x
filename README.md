@@ -108,6 +108,8 @@ uv sync --extra curobo           # cuRobo GPU-accelerated IK & motion planning (
 
 ## Quick Start
 
+For the LimX TRON2 worktree, see the [TRON2 development and evaluation guide](docs/tron2.md).
+
 ### 1. Perception servers (auto-launched)
 
 Perception servers (SAM3, ContactGraspNet, PyRoKi) are **auto-launched** by the YAML config when you run an evaluation. No manual setup required for most configs.

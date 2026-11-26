@@ -203,7 +203,7 @@ register_config(
     "tron2_cube_lift_visual_code_env",
     CodeExecEnvConfig(
         low_level="tron2_cube_lift_low_level",
-        apis=["Tron2ControlApi"],
+        apis=["Tron2ControlCgnOnlyApi"],
         privileged=False,
     ),
 )

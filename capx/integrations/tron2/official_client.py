@@ -7,6 +7,7 @@ on local 4090w simulation, SSH-tunneled Mac dev, and real TRON2 hardware).
 from __future__ import annotations
 
 import json
+import re
 import threading
 import time
 import uuid
@@ -46,6 +47,31 @@ DEFAULT_HOME_Q16: list[float] = [
 # Horizontal forward-pointing gripper orientation (w, x, y, z) in base_Link frame:
 # fingers point along +X_base, jaws open/close horizontally along +/-Y_base.
 HORIZONTAL_GRASP_QUAT_WXYZ: list[float] = [0.70710678, 0.0, -0.70710678, 0.0]
+
+
+class Tron2JointLimitRejection(RuntimeError):
+    """The controller rejected a motion at a joint position limit."""
+
+    def __init__(self, motion: str, response: dict[str, Any]) -> None:
+        self.response = response
+        super().__init__(f"{motion} rejected by controller: {response}")
+
+
+_ANGLE = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?"
+_MOVE_P_POSITION_LIMIT = re.compile(
+    rf"moveP joint\[\d+\] {_ANGLE} out of \[\s*{_ANGLE},\s*{_ANGLE}\s*\] at point \d+/\d+, abort",
+    re.IGNORECASE,
+)
+_MOVE_J_POSITION_LIMIT = re.compile(r"(?:WARN:\s*)?moveJ joint\[\d+\] out of range", re.IGNORECASE)
+
+
+def _raise_if_motion_rejected(motion: str, data: dict[str, Any], position_limit_message: re.Pattern[str]) -> None:
+    if data.get("result") == "success":
+        return
+    message = data.get("message")
+    if isinstance(message, str) and position_limit_message.fullmatch(message.strip()):
+        raise Tron2JointLimitRejection(motion, data)
+    raise RuntimeError(f"{motion} rejected by controller: {data}")
 
 
 @dataclass
@@ -171,8 +197,7 @@ class Tron2OfficialClient:
             raise ValueError(f"MoveJ expects 14 arm joints, got {len(joint)}")
         resp = self.request("request_movej", {"time": float(duration_sec), "joint": joint})
         data = resp.get("data", {})
-        if data.get("result") != "success":
-            raise RuntimeError(f"MoveJ rejected by controller: {data}")
+        _raise_if_motion_rejected("MoveJ", data, _MOVE_J_POSITION_LIMIT)
         return data
 
     def move_p(
@@ -194,6 +219,5 @@ class Tron2OfficialClient:
             raise ValueError(f"MoveP expects 14 pose values, got {len(pos14)}")
         resp = self.request("request_movep", {"time": float(duration_sec), "pos": pos14})
         data = resp.get("data", {})
-        if data.get("result") != "success":
-            raise RuntimeError(f"MoveP rejected by controller: {data}")
+        _raise_if_motion_rejected("MoveP", data, _MOVE_P_POSITION_LIMIT)
         return data

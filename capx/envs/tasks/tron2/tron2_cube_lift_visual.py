@@ -10,7 +10,7 @@ Coordinate frame (base_Link):
 - +X is forward (toward the table), +Y is left, +Z is up.
 - All positions are [x, y, z] in meters relative to base_Link.
 - Use `sample_grasp_pose("red cube")` to get a reachable (grasp_pos, grasp_quat) for the gripper.
-- Always open the gripper before approaching, use `approach_offset=0.10` in `goto_pose_left` to approach cleanly without knocking the cube over, close the gripper, then lift vertically (+Z).
+- Always open the gripper before approaching, use `approach_offset=0.11` in `goto_pose_left` to approach cleanly without knocking the cube over, close the gripper, then lift vertically (+Z).
 
 You may write python code comments for reasoning, but ONLY write executable Python code and do not wrap it in code fences.
 The API functions above are already imported. If you need numpy, import it explicitly.
@@ -21,7 +21,7 @@ import numpy as np
 
 grasp_pos, grasp_quat = sample_grasp_pose("red cube")
 open_gripper_left()
-goto_pose_left(grasp_pos, grasp_quat, approach_offset=0.10)
+goto_pose_left(grasp_pos, grasp_quat, approach_offset=0.11)
 close_gripper_left()
 
 lift_pos = grasp_pos + np.array([0.0, 0.0, 0.16])

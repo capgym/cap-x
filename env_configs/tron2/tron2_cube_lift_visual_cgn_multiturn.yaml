@@ -1,0 +1,48 @@
+# Strict CGN with console feedback for multi-turn model evaluation.
+env:
+  _target_: capx.envs.tasks.tron2.tron2_cube_lift_visual.Tron2CubeLiftVisualCodeEnv
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    low_level: tron2_cube_lift_low_level
+    privileged: false
+    enable_render: true
+    apis:
+      - Tron2ControlCgnOnlyApi
+    multi_turn_prompt: |
+      Task: lift the red cube at least 10 cm with the left arm.
+      The following Python has already run in this episode:
+      ```python
+      {executed_code}
+      ```
+      Console stdout:
+      ```
+      {console_stdout}
+      ```
+      Console stderr:
+      ```
+      {console_stderr}
+      ```
+      A successful motion return or a small TCP error only confirms arm motion. Use
+      get_object_pose("red cube") to check the cube position if its motion is unclear.
+      The checked lift uses a +0.16 m Z offset from grasp_pos and the same grasp_quat.
+      If the previous code reached the selected grasp and closed the gripper, you can
+      correct the lift command from that state. Keep the cube held through evaluation.
+      A motion warning means that motion or a subsequent stage may have been skipped.
+      You can request a different CGN proposal with sample_grasp_pose("red cube", candidate_rank=1).
+      If more action or a check is needed, reply REGENERATE followed by a fenced Python code block.
+      Reply FINISH if you are done with the episode.
+
+api_servers:
+  - _target_: capx.serving.launch_sam3_server.main
+    device: cuda
+    port: 8114
+    host: 127.0.0.1
+  - _target_: capx.serving.launch_contact_graspnet_server.main
+    port: 8115
+    host: 127.0.0.1
+
+record_video: true
+save_multiturn_prompts: true
+output_dir: ./outputs/tron2_cube_lift_visual_cgn_multiturn
+trials: 1
+num_workers: 1

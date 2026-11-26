@@ -1,14 +1,14 @@
-"""Low-level MuJoCo + official Tron2_controller environment for CaP-X.
+"""Single-world TRON2 tabletop simulation driven by the official controller.
 
-Architecture (Direction 3 — simulation aligned with real TRON2 hardware):
-- Arm motion (16 axes) is planned & controlled by official LimX Tron2_controller
-  over WebSocket (MoveJ / MoveP on ws://<host>:5000).
-- Tabletop physics, object contact, 4-bar parallel gripper actuation, and RGB-D
-  camera rendering run locally in MuJoCo using `scene_table_cube.xml`.
+High-level commands use the controller's WebSocket API. The same MuJoCo world
+applies MROS motor commands, returns feedback, and simulates gripper contacts.
 """
 
 from __future__ import annotations
 
+import atexit
+import logging
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -17,33 +17,25 @@ import mujoco
 import numpy as np
 
 from capx.envs.base import BaseEnv
+from capx.integrations.tron2.motor_sim import MotorTransport, Tron2MotorSim
 from capx.integrations.tron2.official_client import (
     DEFAULT_HOME_Q16,
-    HORIZONTAL_GRASP_QUAT_WXYZ,
     PROTOCOL_JOINT_NAMES,
+    Tron2JointLimitRejection,
     Tron2OfficialClient,
 )
 
+_LOG = logging.getLogger(__name__)
 _DEFAULT_XML = (
     Path(__file__).resolve().parents[2]
     / "assets/tron2/DACH_TRON2A/xml/scene_table_cube.xml"
 )
 
-# Local PD gains to track official 16-axis q_ref inside the tabletop MuJoCo scene
-_ARM_GAINS: tuple[tuple[float, float], ...] = (
-    (400.0, 30.0), (400.0, 30.0), (250.0, 18.0), (300.0, 22.0),
-    (120.0, 8.0), (120.0, 8.0), (120.0, 8.0),
-    (400.0, 30.0), (400.0, 30.0), (250.0, 18.0), (300.0, 22.0),
-    (120.0, 8.0), (120.0, 8.0), (120.0, 8.0),
-    (80.0, 6.0), (80.0, 6.0),
-)
-
 _R_MJ_TO_CV = np.diag([1.0, -1.0, -1.0])
+_TARGET_LIFT_M = 0.10
 
 GRIPPER_OPEN_RAD = 0.72
 GRIPPER_CLOSE_RAD = 0.0
-DEFAULT_RIGHT_PARK_POS = np.array([0.46, -0.32, -0.20], dtype=np.float64)
-DEFAULT_LEFT_PARK_POS = np.array([0.46, 0.32, -0.20], dtype=np.float64)
 
 
 def _rotmat_to_quat_wxyz(rot: np.ndarray) -> np.ndarray:
@@ -54,7 +46,7 @@ def _rotmat_to_quat_wxyz(rot: np.ndarray) -> np.ndarray:
 
 
 class Tron2CubeLiftLowLevel(BaseEnv):
-    """CaP-X BaseEnv wrapping TRON2 tabletop cube lifting with official Tron2_controller."""
+    """Simulate the controller's motors and tabletop in one MuJoCo world."""
 
     def __init__(
         self,
@@ -71,8 +63,12 @@ class Tron2CubeLiftLowLevel(BaseEnv):
         render_height: int = 480,
         max_steps: int = 1000,
         seed: int | None = None,
+        motor_command_timeout_sec: float = 0.0,
+        motor_transport: MotorTransport | None = None,
     ) -> None:
         super().__init__()
+        if controller_host != "127.0.0.1":
+            raise ValueError("The TRON2 motor simulation requires a loopback controller")
         self.privileged = privileged
         self.enable_render = enable_render
         self.viser_debug = viser_debug
@@ -85,9 +81,11 @@ class Tron2CubeLiftLowLevel(BaseEnv):
         self._render_height = int(render_height)
         self._rng = np.random.default_rng(seed)
 
-        # Load tabletop MuJoCo model
         self.model = mujoco.MjModel.from_xml_path(str(self.xml_path))
         self.model.opt.integrator = mujoco.mjtIntegrator.mjINT_IMPLICITFAST
+        # The motor thread owns the only stepped state. Task reads and renders
+        # use a snapshot so the renderer never blocks the physics step.
+        self._motor_data = mujoco.MjData(self.model)
         self.data = mujoco.MjData(self.model)
 
         self._base_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, "base_Link")
@@ -106,13 +104,6 @@ class Tron2CubeLiftLowLevel(BaseEnv):
                     int(self.model.jnt_dofadr[jnt_id]),
                     act_id,
                 )
-
-        self._arm_bindings: list[tuple[int, int, int, int, float, float, float, float]] = []
-        for idx, name in enumerate(PROTOCOL_JOINT_NAMES):
-            qpos_adr, dof_adr, act_id = jnt_map[name]
-            kp, kd = _ARM_GAINS[idx]
-            lo, hi = self.model.actuator_ctrlrange[act_id]
-            self._arm_bindings.append((idx, qpos_adr, dof_adr, act_id, kp, kd, float(lo), float(hi)))
 
         def _bind_gripper(jnt_name: str, kp: float, kd: float) -> tuple[int, int, int, float, float, float, float]:
             qpos_adr, dof_adr, act_id = jnt_map[jnt_name]
@@ -133,24 +124,82 @@ class Tron2CubeLiftLowLevel(BaseEnv):
         self._connected = False
 
         # Control & episode state
-        self._q_ref = np.array(DEFAULT_HOME_Q16, dtype=np.float64)
         self._grip_l = GRIPPER_OPEN_RAD
         self._grip_r = GRIPPER_OPEN_RAD
-        self._last_left_pose = (DEFAULT_LEFT_PARK_POS.copy(), np.array(HORIZONTAL_GRASP_QUAT_WXYZ, dtype=np.float64))
-        self._last_right_pose = (DEFAULT_RIGHT_PARK_POS.copy(), np.array(HORIZONTAL_GRASP_QUAT_WXYZ, dtype=np.float64))
         self._cube_init_world = np.array([0.52, 0.15, 0.875], dtype=np.float64)
         self._step_count = 0
-        self._poll_count = 0
+        self._record_ticks = 0
 
         # Offscreen renderer (created lazily when needed)
         self._renderer: mujoco.Renderer | None = None
         self._record_frames = False
         self._frame_buffer: list[np.ndarray] = []
-        self._record_stride = 2  # record every 2 poll cycles (~20 FPS at 40 Hz polling)
+        self._record_stride = 2  # approximately 20 frames per second during motion
 
-    # ----------------------- Connection & Physics Sync -----------------------
+        self._joint_qpos = np.array([self.model.joint(name).qposadr[0] for name in PROTOCOL_JOINT_NAMES])
+        self._motor_data.qpos[self._joint_qpos] = DEFAULT_HOME_Q16
+        self._reset_cube(self._motor_data)
+        mujoco.mj_forward(self.model, self._motor_data)
+        self._motor = Tron2MotorSim(
+            self.model, self._motor_data,
+            command_timeout_sec=motor_command_timeout_sec, transport=motor_transport,
+        )
+        self._physics_lock = threading.Lock()
+        self._physics_stop = threading.Event()
+        self._physics_thread: threading.Thread | None = None
+        self._physics_error: Exception | None = None
+        self._state_spec = mujoco.mjtState.mjSTATE_INTEGRATION
+        self._state_buffer = np.empty(mujoco.mj_stateSize(self.model, self._state_spec))
+
+    # ----------------------- Controller & Physics -----------------------
+
+    def start_motor_loop(self) -> None:
+        """Publish initial motor state before the controller connects."""
+        self._check_physics()
+        if self._physics_thread is not None:
+            return
+        self._motor.start()
+        self._physics_stop.clear()
+        self._physics_thread = threading.Thread(target=self._physics_loop, name="tron2-motor-sim", daemon=True)
+        self._physics_thread.start()
+        atexit.register(self.close)
+
+    def _check_physics(self) -> None:
+        if self._physics_error is not None:
+            raise RuntimeError("TRON2 motor simulation stopped") from self._physics_error
+
+    def _physics_loop(self) -> None:
+        dt = self.model.opt.timestep
+        started = deadline = time.monotonic()
+        waiting_for_control = True
+        _LOG.info("TRON2 is parked at its initial pose while waiting for arm position control")
+        try:
+            while not self._physics_stop.is_set():
+                if waiting_for_control and self._motor.has_arm_position_control():
+                    waiting_for_control = False
+                    _LOG.info("TRON2 arm position control enabled. Starting tabletop physics.")
+                with self._physics_lock:
+                    if waiting_for_control:
+                        # Hold the initialized pose above the table until the
+                        # controller starts sending arm position commands.
+                        self._motor.publish_state_if_due(clock_time_sec=time.monotonic() - started)
+                    else:
+                        self._motor.apply_control()
+                        self._apply_gripper_control(self._motor_data)
+                        mujoco.mj_step(self.model, self._motor_data)
+                        self._motor.publish_state_if_due()
+                deadline += dt
+                now = time.monotonic()
+                if now - deadline > 0.05:
+                    deadline = now
+                if deadline > now:
+                    self._physics_stop.wait(deadline - now)
+        except Exception as exc:
+            self._physics_error = exc
+            self._physics_stop.set()
 
     def _ensure_connected(self) -> None:
+        self.start_motor_loop()
         if not self._connected:
             self.client.connect()
             self._connected = True
@@ -164,47 +213,41 @@ class Tron2CubeLiftLowLevel(BaseEnv):
             )
         return self._renderer
 
-    def _apply_pd_and_step(self, n_substeps: int = 25) -> None:
-        """Advance local MuJoCo physics by n_substeps (default 25 * 1ms = 25ms)."""
-        for _ in range(n_substeps):
-            for idx, qpos_adr, dof_adr, act_id, kp, kd, lo, hi in self._arm_bindings:
-                tau = (
-                    kp * (self._q_ref[idx] - self.data.qpos[qpos_adr])
-                    + kd * (0.0 - self.data.qvel[dof_adr])
-                    + self.data.qfrc_bias[dof_adr]
-                )
-                self.data.ctrl[act_id] = float(np.clip(tau, lo, hi))
+    def _observation_data(self) -> mujoco.MjData:
+        self._check_physics()
+        with self._physics_lock:
+            mujoco.mj_getState(self.model, self._motor_data, self._state_buffer, self._state_spec)
+        mujoco.mj_setState(self.model, self.data, self._state_buffer, self._state_spec)
+        mujoco.mj_forward(self.model, self.data)
+        return self.data
 
-            for (qpos_adr, dof_adr, act_id, kp, kd, lo, hi), target in (
-                (self._grip_base_l, 0.0),
-                (self._grip_base_r, 0.0),
-                (self._grip_drv_l, self._grip_l),
-                (self._grip_drv_r, self._grip_r),
-            ):
-                tau = (
-                    kp * (target - self.data.qpos[qpos_adr])
-                    + kd * (0.0 - self.data.qvel[dof_adr])
-                    + self.data.qfrc_bias[dof_adr]
-                )
-                self.data.ctrl[act_id] = float(np.clip(tau, lo, hi))
+    def _read_arm_joints(self) -> np.ndarray:
+        self._check_physics()
+        with self._physics_lock:
+            return self._motor_data.qpos[self._joint_qpos]
 
-            mujoco.mj_step(self.model, self.data)
+    def _apply_gripper_control(self, data: mujoco.MjData) -> None:
+        for (qpos_adr, dof_adr, act_id, kp, kd, lo, hi), target in (
+            (self._grip_base_l, 0.0),
+            (self._grip_base_r, 0.0),
+            (self._grip_drv_l, self._grip_l),
+            (self._grip_drv_r, self._grip_r),
+        ):
+            tau = kp * (target - data.qpos[qpos_adr]) - kd * data.qvel[dof_adr] + data.qfrc_bias[dof_adr]
+            data.ctrl[act_id] = float(np.clip(tau, lo, hi))
 
-    def sync_from_controller(self, duration_sec: float, poll_dt: float = 0.025) -> None:
-        """Stream official 16-axis joint state and step tabletop physics in 1:1 time."""
+    def _wait_and_record(self, duration_sec: float) -> None:
+        """Wait for the independent motor loop and record observation snapshots."""
         self._ensure_connected()
-        substeps = max(1, int(round(poll_dt / self.model.opt.timestep)))
-        end_t = time.perf_counter() + float(duration_sec)
-        while time.perf_counter() < end_t:
-            t0 = time.perf_counter()
-            self._q_ref = self.client.get_joint_state()
-            self._apply_pd_and_step(substeps)
-            self._poll_count += 1
-            if self._record_frames and self._poll_count % self._record_stride == 0:
+        end = time.monotonic() + float(duration_sec)
+        while (remaining := end - time.monotonic()) > 0:
+            self._check_physics()
+            start = time.monotonic()
+            self._record_ticks += 1
+            if self._record_frames and self._record_ticks % self._record_stride == 0:
                 self._record_frame()
-            elapsed = time.perf_counter() - t0
-            if elapsed < poll_dt:
-                time.sleep(poll_dt - elapsed)
+            self._physics_stop.wait(max(0.0, min(remaining, 0.025) - (time.monotonic() - start)))
+        self._check_physics()
 
     # ----------------------- High-Level Motion Primitives -----------------------
 
@@ -213,11 +256,12 @@ class Tron2CubeLiftLowLevel(BaseEnv):
         self._ensure_connected()
         self._grip_l = GRIPPER_OPEN_RAD
         self._grip_r = GRIPPER_OPEN_RAD
-        resp = self.client.move_j(DEFAULT_HOME_Q16[:14], duration_sec=duration_sec)
-        self.sync_from_controller(duration_sec + 0.5)
-        pose = self.client.get_move_pose()
-        self._last_left_pose = (pose.left_pos.copy(), pose.left_quat.copy())
-        self._last_right_pose = (pose.right_pos.copy(), pose.right_quat.copy())
+        try:
+            resp = self.client.move_j(DEFAULT_HOME_Q16[:14], duration_sec=duration_sec)
+        except Tron2JointLimitRejection as error:
+            self._record_joint_limit_rejection(error)
+            return error.response
+        self._wait_and_record(duration_sec + 0.5)
         return resp
 
     def move_arms_pose(
@@ -228,8 +272,9 @@ class Tron2CubeLiftLowLevel(BaseEnv):
         right_pos: np.ndarray | list[float] | None = None,
         right_quat_wxyz: np.ndarray | list[float] | None = None,
         duration_sec: float = 2.0,
+        report_joint_limit: bool = True,
     ) -> dict[str, Any]:
-        """Move left, right, or both arms via official Tron2_controller MoveP."""
+        """Move either arm via MoveP, optionally reporting joint-limit rejections as responses."""
         self._ensure_connected()
         cur_pose = self.client.get_move_pose()
         l_pos = np.asarray(left_pos, dtype=np.float64) if left_pos is not None else cur_pose.left_pos
@@ -237,12 +282,44 @@ class Tron2CubeLiftLowLevel(BaseEnv):
         r_pos = np.asarray(right_pos, dtype=np.float64) if right_pos is not None else cur_pose.right_pos
         r_quat = np.asarray(right_quat_wxyz, dtype=np.float64) if right_quat_wxyz is not None else cur_pose.right_quat
 
-        resp = self.client.move_p(l_pos, l_quat, r_pos, r_quat, duration_sec=duration_sec)
-        self.sync_from_controller(duration_sec + 0.5)
-        self._last_left_pose = (l_pos.copy(), l_quat.copy())
-        self._last_right_pose = (r_pos.copy(), r_quat.copy())
+        try:
+            resp = self.client.move_p(l_pos, l_quat, r_pos, r_quat, duration_sec=duration_sec)
+        except Tron2JointLimitRejection as error:
+            if not report_joint_limit:
+                raise
+            self._record_joint_limit_rejection(error)
+            return error.response
+        self._wait_and_record(duration_sec + 0.5)
         self._step_count += 1
         return resp
+
+    def _record_joint_limit_rejection(self, error: Tron2JointLimitRejection) -> None:
+        print(f"[TRON2] Joint limit: {error.response['message']}")
+        self._wait_and_record(0.35)
+        self._step_count += 1
+
+    def move_left_joint_path(self, path: np.ndarray, duration_sec: float) -> bool:
+        """Follow one checked CGN path segment. Return false if a joint limit stops it."""
+        self._ensure_connected()
+        for left in path[1:]:
+            q = self._read_arm_joints()
+            target = np.r_[left, q[7:14]]
+            duration = max(0.65, duration_sec / (len(path) - 1), np.max(np.abs(left - q[:7])) / 0.45)
+            try:
+                self.client.move_j(target, duration_sec=duration)
+            except Tron2JointLimitRejection as error:
+                self._record_joint_limit_rejection(error)
+                return False
+            self._wait_and_record(duration + 0.35)
+            deadline = time.monotonic() + 3.0
+            while np.max(np.abs(self._read_arm_joints()[:7] - left)) > 0.015:
+                if time.monotonic() >= deadline:
+                    # The next command starts from measured joints. The caller
+                    # checks the actual TCP at the end of the Cartesian segment.
+                    break
+                self._wait_and_record(0.12)
+        self._step_count += 1
+        return True
 
     def set_gripper(self, side: str, open_fraction: float, duration_sec: float = 1.0) -> None:
         """Smoothly open (1.0) or close (0.0) the specified gripper ('left' or 'right')."""
@@ -256,12 +333,14 @@ class Tron2CubeLiftLowLevel(BaseEnv):
                 self._grip_l = val
             else:
                 self._grip_r = val
-            self.sync_from_controller(0.04)
-        self.sync_from_controller(0.4)
+            self._wait_and_record(0.04)
+        self._wait_and_record(0.4)
 
     # ----------------------- Camera & Observation Helpers -----------------------
 
-    def _get_camera_obs(self, cam_name: str) -> dict[str, Any]:
+    def _get_camera_obs(self, cam_name: str, *, data: mujoco.MjData | None = None) -> dict[str, Any]:
+        if data is None:
+            data = self._observation_data()
         renderer = self._ensure_renderer()
         cam_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_CAMERA, cam_name)
 
@@ -273,23 +352,23 @@ class Tron2CubeLiftLowLevel(BaseEnv):
         )
 
         t_world_base = np.eye(4)
-        t_world_base[:3, :3] = self.data.xmat[self._base_id].reshape(3, 3)
-        t_world_base[:3, 3] = self.data.xpos[self._base_id]
+        t_world_base[:3, :3] = data.xmat[self._base_id].reshape(3, 3)
+        t_world_base[:3, 3] = data.xpos[self._base_id]
 
         t_world_cam_cv = np.eye(4)
-        t_world_cam_cv[:3, :3] = self.data.cam_xmat[cam_id].reshape(3, 3) @ _R_MJ_TO_CV
-        t_world_cam_cv[:3, 3] = self.data.cam_xpos[cam_id]
+        t_world_cam_cv[:3, :3] = data.cam_xmat[cam_id].reshape(3, 3) @ _R_MJ_TO_CV
+        t_world_cam_cv[:3, 3] = data.cam_xpos[cam_id]
 
         pose_mat = np.linalg.inv(t_world_base) @ t_world_cam_cv
         quat_wxyz = _rotmat_to_quat_wxyz(pose_mat[:3, :3])
         pose_7d = np.concatenate([pose_mat[:3, 3], quat_wxyz])
 
         renderer.disable_depth_rendering()
-        renderer.update_scene(self.data, camera=cam_name)
+        renderer.update_scene(data, camera=cam_name)
         rgb = renderer.render().copy()
 
         renderer.enable_depth_rendering()
-        renderer.update_scene(self.data, camera=cam_name)
+        renderer.update_scene(data, camera=cam_name)
         depth = renderer.render().astype(np.float32)[:, :, None].copy()
         renderer.disable_depth_rendering()
 
@@ -302,6 +381,12 @@ class Tron2CubeLiftLowLevel(BaseEnv):
 
     # ----------------------- BaseEnv Required Methods -----------------------
 
+    def _reset_cube(self, data: mujoco.MjData) -> None:
+        start = self._cube_qpos_adr
+        data.qpos[start:start + 7] = [0.52, 0.15, 0.875, 1.0, 0.0, 0.0, 0.0]
+        dof = self.model.jnt_dofadr[self._cube_jnt_id]
+        data.qvel[dof:dof + 6] = 0.0
+
     def reset(
         self,
         *,
@@ -311,32 +396,14 @@ class Tron2CubeLiftLowLevel(BaseEnv):
         if seed is not None:
             self._rng = np.random.default_rng(seed)
 
-        self._ensure_connected()
-        self._step_count = 0
-        self._poll_count = 0
-
-        # 1) 先让 4090w 官方控制器抬臂到位（避免从垂手姿态在桌板底下硬顶桌底）
-        self._grip_l = GRIPPER_OPEN_RAD
-        self._grip_r = GRIPPER_OPEN_RAD
-        self.client.move_j(DEFAULT_HOME_Q16[:14], duration_sec=2.5)
-        time.sleep(3.0)
-        q_home = self.client.get_joint_state()
-
-        # 2) 再重置本地桌面场景，直接以“抬臂在桌面上方”的干净姿态开局
-        mujoco.mj_resetData(self.model, self.data)
-        self._q_ref = q_home.copy()
-        for idx, qpos_adr, *_ in self._arm_bindings:
-            self.data.qpos[qpos_adr] = q_home[idx]
-        self.data.qpos[self._cube_qpos_adr : self._cube_qpos_adr + 3] = np.array([0.52, 0.15, 0.875])
-        self.data.qpos[self._cube_qpos_adr + 3 : self._cube_qpos_adr + 7] = np.array([1.0, 0.0, 0.0, 0.0])
-        self.data.qvel[self.model.jnt_dofadr[self._cube_jnt_id] : self.model.jnt_dofadr[self._cube_jnt_id] + 6] = 0.0
-        mujoco.mj_forward(self.model, self.data)
-        self._apply_pd_and_step(150)
-        self._cube_init_world = self.data.xpos[self._cube_id].copy()
-
-        pose = self.client.get_move_pose()
-        self._last_left_pose = (pose.left_pos.copy(), pose.left_quat.copy())
-        self._last_right_pose = (pose.right_pos.copy(), pose.right_quat.copy())
+        self._step_count = self._record_ticks = 0
+        # Move the arms through the controller and reset only the free cube.
+        self.move_home()
+        with self._physics_lock:
+            self._reset_cube(self._motor_data)
+            mujoco.mj_forward(self.model, self._motor_data)
+        self._wait_and_record(0.15)
+        self._cube_init_world = self._observation_data().xpos[self._cube_id].copy()
         return self.get_observation(), {}
 
     def step(self, action: Any) -> tuple[dict[str, Any], float, bool, bool, dict[str, Any]]:
@@ -348,30 +415,33 @@ class Tron2CubeLiftLowLevel(BaseEnv):
         return obs, reward, terminated, truncated, {}
 
     def get_observation(self) -> dict[str, Any]:
-        cube_pos_base = self.data.xpos[self._cube_id] - self.data.xpos[self._base_id]
+        data = self._observation_data()
         obs: dict[str, Any] = {
-            "robot_joint_pos": self._q_ref.copy(),
+            "robot_joint_pos": data.qpos[self._joint_qpos],
             "left_gripper_open": float(self._grip_l / GRIPPER_OPEN_RAD),
             "right_gripper_open": float(self._grip_r / GRIPPER_OPEN_RAD),
-            "red_cube_pos_base": cube_pos_base.copy(),
-            "red_cube_pos_world": self.data.xpos[self._cube_id].copy(),
         }
+        if self.privileged:
+            cube_pos_world = data.xpos[self._cube_id]
+            obs["red_cube_pos_base"] = cube_pos_world - data.xpos[self._base_id]
+            obs["red_cube_pos_world"] = cube_pos_world.copy()
         if not self.privileged or self.enable_render:
-            cam_obs = self._get_camera_obs(self.primary_camera)
+            cam_obs = self._get_camera_obs(self.primary_camera, data=data)
             obs[self.primary_camera] = cam_obs
             if self.primary_camera != "robot0_robotview":
                 obs["robot0_robotview"] = cam_obs
         return obs
 
     def compute_reward(self) -> float:
-        dz = float(self.data.xpos[self._cube_id][2] - self._cube_init_world[2])
-        if dz >= 0.08:
+        cube_z = self._observation_data().xpos[self._cube_id, 2]
+        if cube_z >= self._cube_init_world[2] + _TARGET_LIFT_M:
             return 1.0
-        return float(np.clip(dz / 0.12, 0.0, 0.99))
+        dz = cube_z - self._cube_init_world[2]
+        return float(np.clip(dz / _TARGET_LIFT_M, 0.0, 0.99))
 
     def task_completed(self) -> bool:
-        dz = float(self.data.xpos[self._cube_id][2] - self._cube_init_world[2])
-        return dz >= 0.08
+        target_z = self._cube_init_world[2] + _TARGET_LIFT_M
+        return bool(self._observation_data().xpos[self._cube_id, 2] >= target_z)
 
     # ----------------------- Video Capture (CaP-X Compatible) -----------------------
 
@@ -405,19 +475,29 @@ class Tron2CubeLiftLowLevel(BaseEnv):
             return
         renderer = self._ensure_renderer()
         renderer.disable_depth_rendering()
-        renderer.update_scene(self.data, camera=self.save_camera_name)
+        renderer.update_scene(self._observation_data(), camera=self.save_camera_name)
         self._frame_buffer.append(renderer.render().copy())
 
     def render(self, mode: str = "rgb_array") -> np.ndarray:  # type: ignore[override]
         renderer = self._ensure_renderer()
         renderer.disable_depth_rendering()
-        renderer.update_scene(self.data, camera=self.save_camera_name)
+        renderer.update_scene(self._observation_data(), camera=self.save_camera_name)
         return renderer.render().copy()
 
     def close(self) -> None:
-        if self._renderer is not None:
-            self._renderer.close()
-            self._renderer = None
-        if self._connected:
-            self.client.close()
-            self._connected = False
+        atexit.unregister(self.close)
+        try:
+            self._physics_stop.set()
+            if self._physics_thread is not None:
+                self._physics_thread.join(timeout=3.0)
+                if self._physics_thread.is_alive():
+                    raise RuntimeError("TRON2 motor simulation thread did not stop")
+                self._physics_thread = None
+            self._motor.close()
+        finally:
+            if self._renderer is not None:
+                self._renderer.close()
+                self._renderer = None
+            if self._connected:
+                self.client.close()
+                self._connected = False

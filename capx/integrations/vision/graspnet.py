@@ -5,7 +5,6 @@ import io
 import logging
 import os
 import sys
-import time
 from typing import Any
 
 import numpy as np
@@ -132,16 +131,17 @@ def init_contact_graspnet(device: str = "cuda", checkpoint_path: str | None = No
         z_range: list[float] = None,
         forward_passes: int = 2,
         max_retries: int = 10,
+        *,
+        num_viewpoints: int | None = None,
+        max_angle_deg: float | None = None,
     ) -> tuple[np.ndarray | list, np.ndarray | list, np.ndarray | list]:
-        """
-        Call the GraspNet service.
+        """Plan grasps from the depth image and its segmentation mask.
+
+        Set num_viewpoints or max_angle_deg to sample virtual camera viewpoints
+        around the same observed point cloud. Omitted options use server defaults.
         """
         if z_range is None:
             z_range = [0.2, 2.0]
-        # num_viewpoints = 5 # default to 5 viewpoints, and not passed as a parameter
-        # max_angle_deg = 10.0 # default to 60 degrees, and not passed as a parameter
-
-        num_viewpoints = 40 # default to 10 viewpoints, and not passed as a parameter
 
         payload = {
             "depth_base64": _numpy_to_base64(depth),
@@ -154,17 +154,23 @@ def init_contact_graspnet(device: str = "cuda", checkpoint_path: str | None = No
             "z_range": z_range,
             "forward_passes": forward_passes,
             "max_retries": max_retries,
-            # "num_viewpoints": num_viewpoints,
-            # "max_angle_deg": max_angle_deg,
         }
+        endpoint = "plan"
+        if num_viewpoints is not None or max_angle_deg is not None:
+            endpoint = "plan_evenly"
+            if num_viewpoints is not None:
+                if num_viewpoints < 1:
+                    raise ValueError("num_viewpoints must be positive")
+                payload["num_viewpoints"] = num_viewpoints
+            if max_angle_deg is not None:
+                if not 0.0 <= max_angle_deg <= 180.0:
+                    raise ValueError("max_angle_deg must be between 0 and 180 degrees")
+                payload["max_angle_deg"] = max_angle_deg
 
         try:
-            # start_time = time.time()
-            resp = requests.post(f"{SERVICE_URL}/plan", json=payload)
+            resp = requests.post(f"{SERVICE_URL}/{endpoint}", json=payload)
             resp.raise_for_status()
             data = resp.json()
-            # end_time = time.time()
-            # print(f"Sample grasp inference time: {end_time - start_time} seconds")
         except requests.RequestException as e:
             raise RuntimeError(f"Failed to communicate with GraspNet service at {SERVICE_URL}: {e}")
 

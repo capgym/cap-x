@@ -136,7 +136,7 @@ except ImportError as exc:
     print(f"TRON2 privileged API not available, skipping: {exc}")
 
 try:
-    from .tron2.control import Tron2ControlApi
-    register_api("Tron2ControlApi", Tron2ControlApi)
+    from .tron2.control_cgn import Tron2ControlCgnOnlyApi
+    register_api("Tron2ControlCgnOnlyApi", Tron2ControlCgnOnlyApi)
 except ImportError as exc:
-    print(f"TRON2 visual API not available, skipping: {exc}")
+    print(f"TRON2 CGN-only API not available, skipping: {exc}")

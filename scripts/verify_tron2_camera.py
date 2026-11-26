@@ -1,19 +1,26 @@
-"""阶段 1.3（严谨版）：用 mujoco.mj_ray 求同一表面点真值，检验亚毫米级反投影误差。"""
+"""Check RGB-D back-projection against ray intersections in the TRON2 scene."""
+
 from pathlib import Path
+
 import mujoco
 import numpy as np
 from PIL import Image
-XML_PATH = Path("capx/assets/tron2/DACH_TRON2A/xml/scene_table_cube.xml")
-OUT_DIR = Path("outputs")
-OUT_DIR.mkdir(exist_ok=True)
+
+ROOT = Path(__file__).resolve().parents[1]
+XML_PATH = ROOT / "capx/assets/tron2/DACH_TRON2A/xml/scene_table_cube.xml"
+OUT_DIR = ROOT / "outputs"
 H, W = 480, 640
 R_MJ_TO_CV = np.diag([1.0, -1.0, -1.0])
+
+
 def get_camera_intrinsics(model: mujoco.MjModel, cam_id: int, height: int, width: int) -> np.ndarray:
     fovy_rad = np.deg2rad(model.cam_fovy[cam_id])
     fy = 0.5 * height / np.tan(0.5 * fovy_rad)
     fx = fy
     cx, cy = width / 2.0, height / 2.0
     return np.array([[fx, 0.0, cx], [0.0, fy, cy], [0.0, 0.0, 1.0]], dtype=np.float64)
+
+
 def get_transforms(model: mujoco.MjModel, data: mujoco.MjData, cam_id: int):
     base_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "base_Link")
     t_world_base = np.eye(4)
@@ -24,7 +31,10 @@ def get_transforms(model: mujoco.MjModel, data: mujoco.MjData, cam_id: int):
     t_world_cam_cv[:3, 3] = data.cam_xpos[cam_id]
     t_base_cam_cv = np.linalg.inv(t_world_base) @ t_world_cam_cv
     return t_world_base, t_world_cam_cv, t_base_cam_cv
+
+
 def main() -> None:
+    OUT_DIR.mkdir(exist_ok=True)
     model = mujoco.MjModel.from_xml_path(str(XML_PATH))
     data = mujoco.MjData(model)
     mujoco.mj_forward(model, data)
@@ -75,5 +85,7 @@ def main() -> None:
         )
     renderer.close()
     print(f"已保存相机图片到: {OUT_DIR.resolve()}/cam_*.png")
+
+
 if __name__ == "__main__":
     main()

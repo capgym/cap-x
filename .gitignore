@@ -4,7 +4,7 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .Python
-.venv/
+.venv
 venv/
 env/
 .env
@@ -23,7 +23,7 @@ node_modules/
 # Editors
 .idea/
 .vscode/
-checkpoints/
+checkpoints
 libero_dataset/
 .cursor/
 
