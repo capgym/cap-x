@@ -20,14 +20,14 @@ from capx.integrations.vision.graspnet import init_contact_graspnet, init_contac
 from capx.integrations.vision.sam3 import init_sam3
 from capx.utils.camera_utils import obs_get_rgb
 
-from .grasp_feasibility import cgn_waypoints, iter_feasible_grasps, plan_checked_left_lift
+from .grasp_feasibility import cgn_approach_waypoints, plan_left_tcp_motion
 from .grasp_quality import candidate_tcp_positions, rank_grasps
 
 # Distance from the CGN gripper base to its predicted contact midpoint
 # (ContactGraspNet.build_6d_grasp, for this checkpoint's center_to_tip=0).
 _CGN_DEPTH_M = 0.1034
 _APPROACH_M = 0.11
-_LIFT_M = 0.16
+_JAW_SYMMETRY = np.diag([-1.0, -1.0, 1.0])
 
 
 # Fixed SO(3) rotation aligning Contact-GraspNet's gripper frame
@@ -209,26 +209,39 @@ class Tron2ControlCgnOnlyApi(ApiBase):
 
         depth, intrinsics, camera_pose, mask = cameras["robot0_robotview"]
         ring = binary_dilation(mask, iterations=10) & ~mask
-        support = self._masked_points_cam(depth, intrinsics, ring)
-        table_z = np.median((support @ camera_pose[:3, :3].T + camera_pose[:3, 3])[:, 2])
+        try:
+            support = self._masked_points_cam(depth, intrinsics, ring)
+        except ValueError:
+            table_z = np.nan
+            print("[CGN-only] table height unavailable for ranking")
+        else:
+            table_z = np.median((support @ camera_pose[:3, :3].T + camera_pose[:3, 3])[:, 2])
         object_points = np.concatenate(object_clouds)
 
         for name, camera_pose, grasps, scores in self._proposals(cameras, object_points):
             yield name, camera_pose, grasps, scores, object_points, table_z
 
     def sample_grasp_pose(
-        self, object_name: str, candidate_rank: int | None = None,
+        self, object_name: str, candidate_rank: int | None = None, *, jaw_branch: int | None = None,
     ) -> tuple[np.ndarray, np.ndarray]:
         """Return a CGN left-arm (position, WXYZ quaternion) from the RGB-D images.
 
-        Pass candidate_rank=1, 2, ... to request a different feasible proposal.
-        Rank 0 is the first feasible proposal. Live calls observe the scene again.
+        Pass candidate_rank=1, 2, ... to request a different ranked proposal.
+        Rank 0 starts with the highest-ranked proposal from the first view batch
+        with usable results. To explicitly choose either assignment of the jaws
+        for the same proposal, pass jaw_branch=0 or jaw_branch=1. If omitted,
+        the gripper geometry score chooses the assignment. Live calls observe
+        the scene again. Motion is planned when goto_pose_left() is called.
         """
         self._pending = None
         self._approach_reached = False
         rank = int(os.environ.get("CAPX_TRON2_CGN_RANK", "0")) if candidate_rank is None else candidate_rank
         if not isinstance(rank, (int, np.integer)) or rank < 0:
             raise ValueError("candidate_rank must be a nonnegative integer")
+        if jaw_branch is None and (replay_branch := os.environ.get("CAPX_TRON2_CGN_JAW_BRANCH")) is not None:
+            jaw_branch = int(replay_branch)
+        if jaw_branch is not None and (not isinstance(jaw_branch, (int, np.integer)) or jaw_branch not in (0, 1)):
+            raise ValueError("jaw_branch must be 0 or 1")
 
         snapshot_path = os.environ.get("CAPX_TRON2_CGN_CANDIDATES")
         snapshot = Path(snapshot_path) if snapshot_path else None
@@ -246,6 +259,8 @@ class Tron2ControlCgnOnlyApi(ApiBase):
         for name, camera_pose, grasps, scores, object_points, table_z in batches:
             raw = np.asarray(grasps).reshape(-1, 4, 4)
             scores = np.asarray(scores).reshape(-1)
+            if len(scores) != len(raw):
+                raise ValueError(f"CGN proposals and scores have different lengths for {name}")
             if not len(raw):
                 print(f"[CGN-only] {name} proposals=0")
                 continue
@@ -253,23 +268,17 @@ class Tron2ControlCgnOnlyApi(ApiBase):
             rotations = base[:, :3, :3]
             contacts = base[:, :3, 3] + _CGN_DEPTH_M * rotations[:, :, 2]
             positions = candidate_tcp_positions(contacts, rotations)
-            quality = rank_grasps(contacts, rotations, scores, object_points, table_z)
-            plans = iter_feasible_grasps(
-                self._env, positions, rotations @ _R_CGN_TO_TRON2, quality,
-                approach_offset=_APPROACH_M, lift_height=_LIFT_M,
+            valid_transform = np.isfinite(raw).all(axis=(1, 2)) & np.all(
+                np.isclose(raw[:, 3, :], [0.0, 0.0, 0.0, 1.0]), axis=1,
             )
-            skipped = 0
-            plan = None
-            for feasible in plans:
-                if remaining_rank == 0:
-                    plan = feasible
-                    break
-                remaining_rank -= 1
-                skipped += 1
-            print(f"[CGN-only] {name} proposals={len(raw)} "
-                  f"geometry_pass={np.isfinite(quality).any(axis=1).sum()} "
-                  f"candidate_rank={rank} feasible_before_selection={skipped} path_found={plan is not None}")
-            if plan is None:
+            quality = rank_grasps(contacts, rotations, np.where(valid_transform, scores, -np.inf),
+                                  object_points, table_z)
+            branches = quality.argmax(axis=1)
+            best_quality = quality[np.arange(len(raw)), branches]
+            ids = np.flatnonzero(np.isfinite(best_quality))
+            print(f"[CGN-only] {name} proposals={len(raw)} rankable={len(ids)} candidate_rank={rank}")
+            if remaining_rank >= len(ids):
+                remaining_rank -= len(ids)
                 continue
 
             if snapshot and not snapshot.is_file():
@@ -279,19 +288,26 @@ class Tron2ControlCgnOnlyApi(ApiBase):
                                         grasps=raw, scores=scores, object_points=object_points, table_z=table_z)
                 temporary.replace(snapshot)
                 print(f"[CGN-only] saved CGN proposal batch to {snapshot}")
-            i = plan.index
-            p = plan.position.copy()
-            q = _rotmat_to_quat_wxyz(plan.rotation)
-            self._pending = (p.copy(), q.copy(), plan)
-            print(f"[CGN-only] selected camera={name} zero_based_index={i} score={scores[i]:.5f} "
+            i = ids[np.argsort(-best_quality[ids], kind="stable")[remaining_rank]]
+            branch = branches[i] if jaw_branch is None else jaw_branch
+            p = positions[i, branch]
+            rotation = rotations[i] @ _R_CGN_TO_TRON2
+            if branch == 1:
+                rotation = rotation @ _JAW_SYMMETRY
+            q = _rotmat_to_quat_wxyz(rotation)
+            self._pending = (p.copy(), q.copy(), rotation)
+            print(f"[CGN-only] selected camera={name} zero_based_index={i} score={scores[i]:.5f} jaw_branch={branch} "
                   f"contact_midpoint={contacts[i].tolist()} tcp={p.tolist()} quat_wxyz={q.tolist()} "
                   f"approach_base={rotations[i, :, 2].tolist()}")
+            print(f"[CGN-only] candidate_rank={rank} rank_score={best_quality[i]:.5f} "
+                  f"jaw_score={quality[i, branch]:.5f}")
             print(f"[CGN-only] raw_camera_grasp={raw[i].tolist()} camera_to_base={camera_pose.tolist()}")
             return p, q
-        raise RuntimeError(f"No CGN candidate at rank {rank} passed the geometry and left-arm trajectory checks")
+        raise RuntimeError(f"No rankable CGN candidate at rank {rank}")
 
     def home_pose(self) -> None:
         """Move both arms to the safe raised ready pose via official MoveJ and open both grippers."""
+        self._approach_reached = False
         self._env.move_home()
 
     def get_left_ee_pose(self) -> tuple[np.ndarray, np.ndarray]:
@@ -309,8 +325,27 @@ class Tron2ControlCgnOnlyApi(ApiBase):
         angle = np.degrees(2 * np.arccos(np.clip(abs(np.dot(quat, pose.left_quat)), 0, 1)))
         reached = bool(distance <= 0.005 and angle <= 3)
         print(f"[CGN-only] {stage} measured TCP error {distance * 1000:.2f} mm / {angle:.2f} deg "
-              f"reached={reached}")
+              f"actual_pos={pose.left_pos.tolist()} actual_quat_wxyz={pose.left_quat.tolist()} "
+              f"target_pos={target.tolist()} reached={reached}")
         return reached
+
+    def _move_left_checked(self, stage, target, quat, rotation, duration_sec, *, upward=False) -> bool:
+        with self._env.motion_feedback(stage):
+            path, reason = plan_left_tcp_motion(self._env, target, rotation, upward=upward)
+            if path is None:
+                print(f"[CGN-only] WARNING: {stage} local planning rejected: {reason}", file=sys.stderr)
+                self._env.record_rejected_motion()
+                self._verify_left_tcp(target, quat, stage)
+                return False
+            sent = self._env.move_left_joint_path(path, duration_sec)
+            reached = self._verify_left_tcp(target, quat, stage)
+        if not sent:
+            print(f"[CGN-only] WARNING: {stage} controller execution stopped before the path completed.",
+                  file=sys.stderr)
+        elif not reached:
+            print(f"[CGN-only] WARNING: {stage} finished dispatch without reaching the requested TCP.",
+                  file=sys.stderr)
+        return sent and reached
 
     def goto_pose_left(self, pos, quat_wxyz=None, approach_offset=0.0, duration_sec=2.0) -> bool:
         """Approach the selected CGN pose or request a checked vertical lift.
@@ -318,13 +353,14 @@ class Tron2ControlCgnOnlyApi(ApiBase):
         Approach with a 0.11 m backoff, then close the gripper. To lift, keep
         the grasp X/Y and orientation, add a positive Z offset (for example,
         0.12 m or 0.16 m), and omit approach_offset. The lift path is checked
-        from the current robot state. An infeasible lift returns False before
-        moving, so you can try a shorter offset. A controller joint limit or
-        missed waypoint also returns False. Resample after a motion failure.
+        from the current robot state. Local planning rejection, controller
+        rejection or a missed waypoint returns False. After an approach
+        failure, explicitly choose another rank or jaw_branch. After a lift
+        failure, you can request a shorter upward offset from the same grasp.
         """
         if self._pending is None:
             raise RuntimeError("Call sample_grasp_pose before executing the CGN trajectory")
-        grasp, quat, plan = self._pending
+        grasp, quat, rotation = self._pending
         target = np.asarray(pos, dtype=float).reshape(3)
         if not np.isfinite(target).all():
             raise ValueError("The requested TCP position must be finite")
@@ -335,14 +371,9 @@ class Tron2ControlCgnOnlyApi(ApiBase):
             raise ValueError("The requested orientation differs from the selected CGN pose")
         if np.allclose(target, grasp) and np.isclose(approach_offset, _APPROACH_M):
             self._approach_reached = False
-            waypoints = cgn_waypoints(grasp, plan.rotation, _APPROACH_M, _LIFT_M)
-            for stage, path, waypoint in zip(("above", "pre-grasp", "contact"),
-                                              plan.joint_paths[:3], waypoints[:3], strict=True):
-                sent = self._env.move_left_joint_path(path, duration_sec)
-                reached = self._verify_left_tcp(waypoint, quat, stage)
-                if not (sent and reached):
-                    print(f"[CGN-only] WARNING: {stage} was incomplete; stopped the checked approach path.",
-                          file=sys.stderr)
+            waypoints = cgn_approach_waypoints(grasp, rotation, _APPROACH_M)
+            for stage, waypoint in zip(("above", "pre-grasp", "contact"), waypoints, strict=True):
+                if not self._move_left_checked(stage, waypoint, quat, rotation, duration_sec):
                     return False
             self._approach_reached = True
             return True
@@ -351,20 +382,15 @@ class Tron2ControlCgnOnlyApi(ApiBase):
             if not self._approach_reached:
                 print("[CGN-only] WARNING: lift skipped because the checked approach was incomplete.",
                       file=sys.stderr)
+                with self._env.motion_feedback("lift"):
+                    self._env.record_rejected_motion()
+                    self._verify_left_tcp(target, quat, "lift")
                 return False
-            path = plan_checked_left_lift(self._env, target, plan.rotation)
-            if path is None:
-                print(f"[CGN-only] WARNING: requested lift {target[2] - grasp[2]:.3g} m has no "
-                      "checked path from the current pose; try a shorter upward offset.", file=sys.stderr)
-                return False
-            self._pending = None
-            self._approach_reached = False
-            sent = self._env.move_left_joint_path(path, duration_sec)
-            reached = self._verify_left_tcp(target, quat, "lift")
-            if not (sent and reached):
-                print("[CGN-only] WARNING: lift was incomplete; resample to plan from the current pose.",
-                      file=sys.stderr)
-            return sent and reached
+            reached = self._move_left_checked("lift", target, quat, rotation, duration_sec, upward=True)
+            if reached:
+                self._pending = None
+                self._approach_reached = False
+            return reached
         else:
             raise ValueError(
                 f"Requested offset from the selected CGN grasp: {(target - grasp).tolist()} m. "
@@ -402,11 +428,14 @@ class Tron2ControlCgnOnlyApi(ApiBase):
 
     def open_gripper_left(self) -> None:
         """Open the left parallel gripper fully (~7.5 cm)."""
-        self._env.set_gripper("left", 1.0)
+        self._approach_reached = False
+        with self._env.motion_feedback("open"):
+            self._env.set_gripper("left", 1.0)
 
     def close_gripper_left(self) -> None:
         """Close the left parallel gripper smoothly to clamp an object."""
-        self._env.set_gripper("left", 0.0)
+        with self._env.motion_feedback("close"):
+            self._env.set_gripper("left", 0.0)
 
     def open_gripper_right(self) -> None:
         """Open the right parallel gripper fully (~7.5 cm)."""

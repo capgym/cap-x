@@ -165,8 +165,11 @@ def _evaluate(cli: argparse.Namespace, model_url: str) -> int:
     if cli.max_code_blocks is not None:
         trial_module.MULTITURN_LIMIT = cli.max_code_blocks - 1
     cli.output_dir.mkdir()
-    for key in ("CAPX_TRON2_CGN_RANK", "CAPX_TRON2_CGN_CANDIDATES"):
-        os.environ.pop(key, None)
+    os.environ.pop("CAPX_TRON2_CGN_RANK", None)
+    os.environ.pop("CAPX_TRON2_CGN_JAW_BRANCH", None)
+    os.environ.pop("CAPX_TRON2_CGN_CANDIDATES", None)
+    if cli.candidate_file is not None:
+        os.environ["CAPX_TRON2_CGN_CANDIDATES"] = str(cli.candidate_file)
 
     server_procs = _start_api_servers(api_servers)
     env = None
@@ -179,7 +182,12 @@ def _evaluate(cli: argparse.Namespace, model_url: str) -> int:
                 env, trial, launch, config, multi_turn_prompt, cli.output_dir / f"episode_{trial:02d}",
             )
             results.append(result)
-            text = json.dumps({"tier": cli.tier, "model": cli.model, "trials": results}, indent=2)
+            text = json.dumps({
+                "tier": cli.tier,
+                "model": cli.model,
+                "candidate_file": str(cli.candidate_file) if cli.candidate_file else None,
+                "trials": results,
+            }, indent=2)
             temporary = cli.output_dir / "results.tmp"
             temporary.write_text(text + "\n", encoding="utf-8")
             temporary.replace(cli.output_dir / "results.json")
@@ -202,6 +210,7 @@ def main() -> int:
     parser.add_argument("--server-url", required=True)
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--route2-startup-dir", type=Path)
+    parser.add_argument("--candidate-file", type=Path, help="Replay a saved CGN batch for diagnostics.")
     parser.add_argument("--trials", type=int, default=1)
     parser.add_argument("--max-tokens", type=int, default=1024)
     parser.add_argument("--max-code-blocks", type=int)
@@ -222,6 +231,8 @@ def main() -> int:
         parser.error("Use scripts/run_tron2_route2.sh --tier S2 or M1 with --model")
     if min(cli.trials, cli.max_tokens) <= 0 or (cli.max_code_blocks is not None and cli.max_code_blocks <= 0):
         parser.error("--trials, --max-tokens and --max-code-blocks must be positive")
+    if cli.candidate_file is not None and not cli.candidate_file.is_file():
+        parser.error("--candidate-file must point to a saved CGN proposal batch")
     with _IsolatedModelRelay(cli.relay_socket) as relay:
         listener = threading.Thread(target=relay.serve_forever, daemon=True)
         listener.start()

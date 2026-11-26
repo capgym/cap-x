@@ -1,15 +1,12 @@
-"""Check left-arm CGN candidates against the TRON2 model and controller limits."""
+"""Plan individual left-arm TCP stages against the TRON2 joint limits."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from itertools import islice
 from typing import TYPE_CHECKING
 
 import mujoco
 import numpy as np
 from scipy.optimize import least_squares
-from scipy.spatial import cKDTree
 from scipy.spatial.transform import Rotation
 
 from .official_client import PROTOCOL_JOINT_NAMES
@@ -20,24 +17,9 @@ if TYPE_CHECKING:
 
 # Fixed L_ee_Joint relative to wrist_roll_L_Link in robot_zeromass_graser.urdf.
 _WRIST_TO_TCP_M = np.array([-0.0338, 0.0, -0.2125])
-_JAW_SYMMETRY = np.diag([-1.0, -1.0, 1.0])
 _MAX_POSITION_ERROR_M = 0.004
 _MAX_ORIENTATION_ERROR_RAD = np.deg2rad(3)
 _JOINT_LIMIT_MARGIN_RAD = 0.006
-
-
-@dataclass
-class FeasibleGrasp:
-    index: int
-    position: np.ndarray
-    rotation: np.ndarray
-    joint_paths: tuple[np.ndarray, ...]
-    max_position_error_m: float
-    max_orientation_error_rad: float
-
-    @property
-    def waypoint_joints(self) -> np.ndarray:
-        return np.stack([segment[-1] for segment in self.joint_paths])
 
 
 class _LeftArmIK:
@@ -46,10 +28,8 @@ class _LeftArmIK:
         d = self.data = mujoco.MjData(m)
         base = m.body("base_Link").id
         left_shoulder = m.body("proximal_pitch_L_Link").id
-        table = m.body("table").id
         self.wrist = m.body("wrist_roll_L_Link").id
-        # Copy only the robot configuration. The workpiece pose is never used
-        # to generate, rank or check a candidate.
+        # Use the measured robot configuration for IK and self-collision checks.
         robot = np.zeros(m.nbody, dtype=bool)
         left_arm = np.zeros_like(robot)
         for body in range(1, m.nbody):
@@ -60,7 +40,7 @@ class _LeftArmIK:
         robot_qpos = np.repeat(robot[m.jnt_bodyid], qpos_width)
         d.qpos[robot_qpos] = env._observation_data().qpos[robot_qpos]
         self.arm_geoms = left_arm[m.geom_bodyid]
-        self.obstacle_geoms = robot[m.geom_bodyid] | (m.geom_bodyid == table)
+        self.robot_geoms = robot[m.geom_bodyid]
 
         joints = [m.joint(name).id for name in PROTOCOL_JOINT_NAMES[:7]]
         self.qpos_ids = m.jnt_qposadr[joints]
@@ -94,16 +74,18 @@ class _LeftArmIK:
             self.world_from_base.T @ wrist_rot,
         )
 
-    def has_collision(self) -> bool:
-        mujoco.mj_fwdPosition(self.model, self.data)
-        for contact in self.data.contact:
+    def self_collision(self) -> str | None:
+        m, d = self.model, self.data
+        mujoco.mj_fwdPosition(m, d)
+        for contact in d.contact:
             a, b = contact.geom1, contact.geom2
-            if contact.dist < -0.0001 and (
-                (self.arm_geoms[a] and self.obstacle_geoms[b])
-                or (self.arm_geoms[b] and self.obstacle_geoms[a])
+            if contact.dist < -0.0001 and self.robot_geoms[a] and self.robot_geoms[b] and (
+                self.arm_geoms[a] or self.arm_geoms[b]
             ):
-                return True
-        return False
+                first = m.body(m.geom_bodyid[a]).name
+                second = m.body(m.geom_bodyid[b]).name
+                return f"self-collision between {first} and {second} ({-1000 * contact.dist:.2f} mm penetration)"
+        return None
 
     def solve(self, position: np.ndarray, rotation: Rotation, seed: np.ndarray):
         rotation_inv = rotation.inv()
@@ -139,159 +121,57 @@ class _LeftArmIK:
         pos, rot = self.pose(fit.x)
         return fit.x, float(np.linalg.norm(pos - position)), float((Rotation.from_matrix(rot) * rotation_inv).magnitude())
 
-    def _verify_joint_paths(
-        self, rotation: np.ndarray, waypoints: np.ndarray,
-    ) -> tuple[tuple[np.ndarray, ...], float, float] | None:
+    def plan(
+        self, position: np.ndarray, rotation: np.ndarray, *, upward: bool,
+    ) -> tuple[np.ndarray | None, str | None]:
         q = self.start.copy()
         start_pos, start_mat = self.pose(q)
+        if upward and position[2] <= start_pos[2]:
+            return None, f"requested Z {position[2]:.4f} m is at or below measured Z {start_pos[2]:.4f} m"
         start_rot = Rotation.from_matrix(start_mat)
-        goal_rot = Rotation.from_matrix(rotation)
-        segments = []
-        max_position_error = max_rotation_error = 0.0
-        for position in waypoints:
-            delta_rot = (start_rot.inv() * goal_rot).as_rotvec()
-            with np.errstate(over="ignore"):
-                subdivisions = max(
-                    np.linalg.norm(position - start_pos) / 0.024,
-                    np.linalg.norm(delta_rot) / np.deg2rad(7.0),
-                )
-            if not np.isfinite(subdivisions):
-                return None
-            count = max(1, int(np.ceil(subdivisions)))
-            segment = [q.copy()]
-            for step in range(1, count + 1):
-                fraction = step / count
-                p = start_pos + fraction * (position - start_pos)
-                r = start_rot * Rotation.from_rotvec(fraction * delta_rot)
-                q_next, pos_error, rot_error = self.solve(p, r, q)
-                if (pos_error > _MAX_POSITION_ERROR_M or rot_error > _MAX_ORIENTATION_ERROR_RAD
-                        or np.max(np.abs(q_next - q)) > 0.35 or self.has_collision()):
-                    return None
-                max_position_error = max(max_position_error, pos_error)
-                max_rotation_error = max(max_rotation_error, rot_error)
-                segment.append(q_next)
-                q = q_next
-            segments.append(np.stack(segment))
-            start_pos, start_rot = position, goal_rot
-        return tuple(segments), max_position_error, max_rotation_error
-
-    def verify_path(self, index: int, rotation: np.ndarray, waypoints: np.ndarray) -> FeasibleGrasp | None:
-        checked = self._verify_joint_paths(rotation, waypoints)
-        if checked is None:
-            return None
-        paths, position_error, orientation_error = checked
-        return FeasibleGrasp(index, waypoints[2].copy(), rotation.copy(), paths, position_error, orientation_error)
-
-    def verify_lift(self, position: np.ndarray, rotation: np.ndarray) -> np.ndarray | None:
-        start_pos, _ = self.pose(self.start)
-        if position[2] <= start_pos[2]:
-            return None
-        checked = self._verify_joint_paths(rotation, position[None, :])
-        return checked[0][0] if checked is not None else None
+        delta_rot = (start_rot.inv() * Rotation.from_matrix(rotation)).as_rotvec()
+        with np.errstate(over="ignore"):
+            displacement = position - start_pos
+            subdivisions = max(np.linalg.norm(displacement) / 0.024,
+                               np.linalg.norm(delta_rot) / np.deg2rad(7.0))
+        if not np.isfinite(subdivisions):
+            return None, "TCP target is out of range"
+        count = max(1, int(np.ceil(subdivisions)))
+        path = [q]
+        for step in range(1, count + 1):
+            fraction = step / count
+            p = start_pos + fraction * displacement
+            r = start_rot * Rotation.from_rotvec(fraction * delta_rot)
+            q_next, pos_error, rot_error = self.solve(p, r, q)
+            if pos_error > _MAX_POSITION_ERROR_M or rot_error > _MAX_ORIENTATION_ERROR_RAD:
+                limited = np.flatnonzero(np.minimum(q_next - self.lower, self.upper - q_next) < 1e-4)
+                bounds = ", ".join(PROTOCOL_JOINT_NAMES[i] for i in limited)
+                detail = f", at planning bounds: {bounds}" if bounds else ""
+                return None, (f"IK failed at waypoint {step}/{count} "
+                              f"({pos_error * 1000:.2f} mm / {np.degrees(rot_error):.2f} deg{detail})")
+            changes = np.abs(q_next - q)
+            joint = int(np.argmax(changes))
+            if changes[joint] > 0.35:
+                return None, (f"{PROTOCOL_JOINT_NAMES[joint]} changes {changes[joint]:.3f} rad "
+                              f"at waypoint {step}/{count} (limit 0.35 rad)")
+            collision = self.self_collision()
+            if collision is not None:
+                return None, f"{collision} at waypoint {step}/{count}"
+            path.append(q_next)
+            q = q_next
+        return np.stack(path), None
 
 
-def plan_checked_left_lift(
-    env: Tron2CubeLiftLowLevel, position: np.ndarray, rotation: np.ndarray,
-) -> np.ndarray | None:
-    """Check an upward lift from the measured left-arm state and current gripper geometry."""
-    return _LeftArmIK(env).verify_lift(position, rotation)
+def plan_left_tcp_motion(
+    env: Tron2CubeLiftLowLevel, position: np.ndarray, rotation: np.ndarray, *, upward: bool = False,
+) -> tuple[np.ndarray | None, str | None]:
+    """Plan this motion from the measured state. Table contacts are simulated during dispatch."""
+    return _LeftArmIK(env).plan(position, rotation, upward=upward)
 
 
-def cgn_waypoints(positions, rotations, approach_offset, lift_height):
-    """Back off along each tool axis and clear the workpiece during entry."""
-    pre = positions + approach_offset * rotations[..., :, 2]
-    above = pre.copy()
-    # A steep CGN approach already places the pre-grasp above the object.
-    above[..., 2] = np.maximum(pre[..., 2], positions[..., 2] + 0.10)
-    return np.stack((above, pre, positions, positions + [0., 0., lift_height]), axis=-2)
-
-
-def iter_feasible_grasps(
-    env: Tron2CubeLiftLowLevel,
-    positions_base: np.ndarray,
-    rotations_base: np.ndarray,
-    scores: np.ndarray,
-    *,
-    approach_offset: float = 0.11,
-    lift_height: float = 0.16,
-):
-    """Yield ranked CGN candidates with continuous paths in base_Link coordinates.
-
-    The segments run from the current configuration to above the pre-grasp,
-    then to the pre-grasp, contact pose, and lifted pose. Each segment includes
-    both endpoints, in the seven-joint protocol order. Rotations are already
-    converted from the CGN frame to the TRON2 TCP frame by the caller.
-    Each proposal is yielded once, even if both jaw assignments have a path.
-    """
-    positions = np.asarray(positions_base, dtype=float)
-    rotations = np.asarray(rotations_base, dtype=float).reshape(-1, 3, 3)
-    scores = np.asarray(scores, dtype=float)
-    if positions.shape != (len(rotations), 2, 3) or scores.shape != (len(rotations), 2):
-        raise ValueError("Expected two calibrated TCP positions and two symmetry scores per candidate")
-    if not np.isfinite([approach_offset, lift_height]).all() or approach_offset <= 0 or lift_height <= 0:
-        raise ValueError("Pre-grasp distance and lift height must be positive")
-    valid_branches = np.isfinite(positions).all(axis=2) & np.isfinite(scores)
-    valid = np.isfinite(rotations).all(axis=(1, 2)) & valid_branches.any(axis=1)
-    # Invalid transforms cannot be repaired without changing the proposed pose.
-    ids = np.flatnonzero(valid)
-    r = rotations[ids]
-    ids = ids[(np.abs(np.linalg.det(r) - 1) < 0.003)
-              & (np.max(np.abs(r.transpose(0, 2, 1) @ r - np.eye(3)), axis=(1, 2)) < 0.003)]
-    if not len(ids):
-        return
-    ik = _LeftArmIK(env)
-    # A deterministic FK sample provides seeds for contact screening and a
-    # tie-breaker between the two equivalent jaw orientations. Keep the
-    # caller's grasp-quality order across different proposals.
-    seeds = np.random.default_rng(0).uniform(ik.lower, ik.upper, (4096, 7))
-    seeds[0] = np.clip(ik.start, ik.lower, ik.upper)
-    cloud = np.empty((len(seeds), 12))
-    for k, q in enumerate(seeds):
-        p, rot = ik.pose(q)
-        cloud[k] = np.r_[p, 0.12 * rot.ravel()]
-    tree = cKDTree(cloud)
-    row, branch = np.where(valid_branches[ids])
-    source = ids[row]
-    orientations = rotations[source].copy()
-    orientations[branch == 1] = orientations[branch == 1] @ _JAW_SYMMETRY
-    contact = positions[source, branch]
-    stages = cgn_waypoints(contact, orientations, approach_offset, lift_height)
-    query = np.empty((len(source), 4, 12))
-    query[:, :, :3] = stages
-    query[:, :, 3:] = 0.12 * orientations.reshape(-1, 1, 9)
-    distances, nearest = tree.query(query)
-    order = np.lexsort((np.max(distances, axis=1), -scores[source, branch]))
-    feasible_indices: set[int] = set()
-    for k in order:
-        index = int(source[k])
-        if index in feasible_indices:
-            continue
-        r = Rotation.from_matrix(orientations[k])
-        # Check contact first. A grasp pose with no local fit to its closest
-        # workspace sample gets a second attempt from the current joint state.
-        for seed in (seeds[nearest[k, 2]], ik.start):
-            _, ep, er = ik.solve(contact[k], r, seed)
-            if ep <= _MAX_POSITION_ERROR_M and er <= _MAX_ORIENTATION_ERROR_RAD and not ik.has_collision():
-                break
-        else:
-            continue
-        result = ik.verify_path(index, orientations[k], stages[k])
-        if result is not None:
-            feasible_indices.add(index)
-            yield result
-
-
-def select_feasible_grasp(
-    env: Tron2CubeLiftLowLevel,
-    positions_base: np.ndarray,
-    rotations_base: np.ndarray,
-    scores: np.ndarray,
-    *,
-    approach_offset: float = 0.11,
-    lift_height: float = 0.16,
-    candidate_rank: int = 0,
-) -> FeasibleGrasp | None:
-    """Return the requested zero-based feasible CGN candidate from one batch."""
-    plans = iter_feasible_grasps(env, positions_base, rotations_base, scores,
-                                approach_offset=approach_offset, lift_height=lift_height)
-    return next(islice(plans, candidate_rank, None), None)
+def cgn_approach_waypoints(position: np.ndarray, rotation: np.ndarray, offset: float):
+    """Back off along the selected CGN tool axis and clear the object on entry."""
+    pre_grasp = position + offset * rotation[:, 2]
+    above = pre_grasp.copy()
+    above[2] = max(pre_grasp[2], position[2] + 0.10)
+    return above, pre_grasp, position

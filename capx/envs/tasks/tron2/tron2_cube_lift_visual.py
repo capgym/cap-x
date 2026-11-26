@@ -9,7 +9,7 @@ Goal: pick up the red cube on the table with the left arm and lift it at least 1
 Coordinate frame (base_Link):
 - +X is forward (toward the table), +Y is left, +Z is up.
 - All positions are [x, y, z] in meters relative to base_Link.
-- Use `sample_grasp_pose("red cube")` to get a reachable (grasp_pos, grasp_quat) for the gripper.
+- Use `sample_grasp_pose("red cube")` to get a ranked CGN grasp candidate (grasp_pos, grasp_quat).
 - Always open the gripper before approaching, use `approach_offset=0.11` in `goto_pose_left` to approach cleanly without knocking the cube over, close the gripper, then lift vertically (+Z).
 - Check the return from `goto_pose_left`. If the approach fails, select and plan a new grasp before closing the gripper.
 - The `grasp_pos` returned by `sample_grasp_pose` is the tool-center position. Build the lift target from that same `grasp_pos` by increasing only Z and keeping `grasp_quat`. `get_object_pose` reports the cube center for perception checks.
@@ -25,11 +25,10 @@ import numpy as np
 
 grasp_pos, grasp_quat = sample_grasp_pose("red cube")
 open_gripper_left()
-goto_pose_left(grasp_pos, grasp_quat, approach_offset=0.11)
-close_gripper_left()
-
-lift_pos = grasp_pos + np.array([0.0, 0.0, 0.16])
-goto_pose_left(lift_pos, grasp_quat)
+if goto_pose_left(grasp_pos, grasp_quat, approach_offset=0.11):
+    close_gripper_left()
+    lift_pos = grasp_pos + np.array([0.0, 0.0, 0.16])
+    goto_pose_left(lift_pos, grasp_quat)
 """
 
 

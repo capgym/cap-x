@@ -20,9 +20,11 @@ CUDA perception stack on 4090w.
 | `scripts/tron2_motor_sim.py` | Standalone model and motor-bus diagnostics |
 
 All TRON2 profiles use the `tron2_cube_lift_low_level` environment. The tabletop
-scene uses elliptic contact cones and `impratio=10`. The CGN grasp plans and checks
-vertical lifts from the measured arm state. Run the standalone motor probe in its
-own test session because it also publishes motor state.
+scene uses elliptic contact cones and `impratio=10`. CGN candidates are ranked from
+the perception data. The selected motion is planned from the measured arm state
+when requested. MuJoCo resolves table contact, and the action log reports each
+loaded link with its peak normal load and contact duration. Run the standalone
+motor probe in its own test session because it also publishes motor state.
 
 ## Worktrees and runtime files
 
@@ -106,6 +108,7 @@ TRON2_SDK_DIR="$runtime/sdk" bash scripts/run_tron2_route2.sh \
 ```
 
 Use a fresh output directory for `--tier M1`. Use `--max-code-blocks` to set the
-M1 turn budget. Check `evaluation/results.json` for execution status, reward,
-regenerations, and recording paths. The per-episode artifacts include generated
-code, model decisions, and video.
+M1 turn budget. To reproduce a recorded CGN batch in a model diagnostic, pass
+`--candidate-file /path/to/candidates.npz`. Check `evaluation/results.json` for
+execution status, reward, regenerations, and recording paths. The per-episode
+artifacts include generated code, model decisions, and video.

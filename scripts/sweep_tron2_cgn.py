@@ -15,9 +15,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 ORACLE_DONE = "[CGN sweep] oracle action sequence completed"
-SELECTION_FIELDS = re.compile(r"\b(camera|zero_based_index|score)=([^\s]+)")
+SELECTION_FIELDS = re.compile(r"\b(camera|zero_based_index|jaw_branch|score)=([^\s]+)")
 MOTION_WARNING = re.compile(
-    r"\[CGN-only\] WARNING:|\bjoint limit:|joint\[\d+\].*out of", re.I,
+    r"\[CGN-only\] WARNING:|\bjoint limit:|joint\[\d+\].*out of|CONTROLLER_JOINT_LIMIT|WAYPOINT_NOT_REACHED", re.I,
 )
 
 
@@ -78,8 +78,9 @@ def _run_rank(env, launch_args, config: dict, rank: int, output_dir: Path,
     lines = log_path.read_text(encoding="utf-8").splitlines()
     selected = next((line for line in lines if "[CGN-only] selected " in line), "")
     candidate = dict(SELECTION_FIELDS.findall(selected))
-    if "zero_based_index" in candidate:
-        candidate["zero_based_index"] = int(candidate["zero_based_index"])
+    for field in ("zero_based_index", "jaw_branch"):
+        if field in candidate:
+            candidate[field] = int(candidate[field])
     if "score" in candidate:
         candidate["score"] = float(candidate["score"])
     warnings = [line for line in lines if MOTION_WARNING.search(line)]
@@ -118,6 +119,7 @@ def main() -> int:
     selection.add_argument("--ranks", nargs="+", type=int, help="Zero-based ranks from the same proposal batch (default: 0–4).")
     selection.add_argument("--fresh-trials", type=int, help="Sample a new CGN batch and select rank 0 for each trial.")
     parser.add_argument("--candidate-file", type=Path, help="Resume using a saved CGN proposal batch.")
+    parser.add_argument("--jaw-branch", type=int, choices=(0, 1), help="Replay one specific jaw assignment.")
     parser.add_argument("--config-path", type=Path, default=ROOT / "env_configs/tron2/tron2_cube_lift_visual_cgn_only.yaml")
     parser.add_argument("--route2-startup-dir", type=Path,
                         help="Coordinate motor and controller startup with the isolated Route 2 launcher.")
@@ -129,6 +131,9 @@ def main() -> int:
         parser.error("--fresh-trials requires a positive count and samples its own candidates")
     if cli.candidate_file is not None and not cli.candidate_file.is_file():
         parser.error("--candidate-file must point to a saved CGN proposal batch")
+    os.environ.pop("CAPX_TRON2_CGN_JAW_BRANCH", None)
+    if cli.jaw_branch is not None:
+        os.environ["CAPX_TRON2_CGN_JAW_BRANCH"] = str(cli.jaw_branch)
 
     from capx.envs.configs.instantiate import instantiate
     from capx.envs.launch import LaunchArgs

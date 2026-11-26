@@ -14,10 +14,12 @@ TEST_OPT_DIR Directory containing the simulated controller's test /opt fixture.
 
 Optional env vars: CUDA_VISIBLE_DEVICES, TRON2_PYTHON (default .venv/bin/python),
 TRON2_SDK_DIR (directory containing limxsdk if it is outside the venv).
-SWEEP_ARGS can include --fresh-trials 1, --ranks 0 1, or --candidate-file FILE.
+SWEEP_ARGS can include --fresh-trials 1, --ranks 0 1, --jaw-branch 0, or
+--candidate-file FILE.
 MODEL_ARGS can include --server-url http://127.0.0.1:18089/v1/chat/completions,
---trials 1, --max-tokens 1024, or --max-code-blocks 4. Run the model server on the
-host loopback before launching. The optional TRON2_MODEL_API_KEY is passed to it.
+--trials 1, --max-tokens 1024, --max-code-blocks 4, or --candidate-file FILE for
+recorded diagnostics. Run the model server on the host loopback before launching.
+The optional TRON2_MODEL_API_KEY is passed to it.
 USAGE
 }
 

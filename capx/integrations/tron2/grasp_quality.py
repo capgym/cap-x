@@ -67,7 +67,8 @@ def rank_grasps(contact_centers, cgn_rotations_base, scores, object_points_base,
 
     Positions are candidate contact midpoints in the robot base frame. Each
     rotation is the unmodified CGN basis in that frame, before TRON2 conversion.
-    An unusable branch receives -inf.
+    Malformed positions, rotations and scores receive -inf. Geometry alters
+    preference only. The physical simulation determines contact at runtime.
     """
     pos = np.asarray(contact_centers, dtype=float).reshape(-1, 3)
     rot = np.asarray(cgn_rotations_base, dtype=float).reshape(-1, 3, 3)
@@ -75,9 +76,19 @@ def rank_grasps(contact_centers, cgn_rotations_base, scores, object_points_base,
     if len(pos) != len(scores) or len(rot) != len(scores):
         raise ValueError("Each position needs a CGN rotation and score")
     result = np.full((len(scores), 2), -np.inf)
+    valid = np.isfinite(scores) & np.isfinite(pos).all(axis=1) & np.isfinite(rot).all(axis=(1, 2))
+    ids = np.flatnonzero(valid)
+    # An SO(3) transform has bounded elements. This also avoids overflow when
+    # checking malformed but finite matrices.
+    ids = ids[np.max(np.abs(rot[ids]), axis=(1, 2)) <= 1.003]
+    r = rot[ids]
+    ids = ids[(np.abs(np.linalg.det(r) - 1) < 0.003)
+              & (np.max(np.abs(r.transpose(0, 2, 1) @ r - np.eye(3)), axis=(1, 2)) < 0.003)]
+    pos, rot, scores = pos[ids], rot[ids], scores[ids]
+    result[ids] = scores[:, None]
     points = np.asarray(object_points_base, dtype=float).reshape(-1, 3)
     points = points[np.isfinite(points).all(axis=1)]
-    if not len(pos) or len(points) < 10 or not np.isfinite(table_z):
+    if not len(ids) or len(points) < 10:
         return result
 
     # Fit the upright cube's yaw from the segmented cloud. PCA axes are
@@ -108,7 +119,7 @@ def rank_grasps(contact_centers, cgn_rotations_base, scores, object_points_base,
     # Test both equivalent assignments of the two jaws. The physical pads
     # have a small asymmetry about the hand-back axis.
     vertical = rot[:, 2, :]
-    bottom = np.full(result.shape, np.inf)
+    bottom = np.full((len(ids), 2), np.inf)
     # An object trapped between the jaws stops their travel. Include the
     # next narrower sampled aperture to allow for compliance and sampling.
     for i, (opening, hull) in enumerate(sweep):
@@ -120,14 +131,18 @@ def rank_grasps(contact_centers, cgn_rotations_base, scores, object_points_base,
                                      np.min(hull @ (z * [-1, -1, 1]).T, axis=0)))
             bottom[active] = np.minimum(bottom[active], lower)
     tcp = candidate_tcp_positions(pos, rot)
-    clearance = tcp[:, :, 2] + bottom - table_z
     face_alignment = np.max(jaw_axes, axis=1)
     # At 50 mm opening the broad flat pad covers roughly +/- 28 mm around
     # its own center along the approach, with a 30 mm hand-back span.
-    fits_pad = (np.isfinite(scores) & (opening_margin >= 0)
-                & (back_offset <= 0.016) & (np.abs(insertion) <= 0.029))
+    opening_penalty = np.maximum(-opening_margin, 0) / 0.012
+    insertion_penalty = np.maximum(np.abs(insertion) - 0.029, 0) / 0.012
     # The central pad is about 30 mm across the back axis. Prefer opposed
     # face contacts with balanced closure over clipping one corner of a cube.
-    quality = scores + face_alignment - (back_offset / 0.016) ** 2 - (jaw_offset / 0.012) ** 2
-    return np.where(fits_pad[:, None] & (clearance >= 0),
-                    quality[:, None] + np.minimum(clearance, 0.008) / 0.032, -np.inf)
+    quality = (scores + face_alignment - (back_offset / 0.016) ** 2 - (jaw_offset / 0.012) ** 2
+               - opening_penalty - insertion_penalty)
+    if np.isfinite(table_z):
+        clearance = tcp[:, :, 2] + bottom - table_z
+        result[ids] = quality[:, None] + np.minimum(clearance, 0.008) / 0.032
+    else:
+        result[ids] = quality[:, None]
+    return result

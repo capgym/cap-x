@@ -10,6 +10,8 @@ import atexit
 import logging
 import threading
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -36,6 +38,40 @@ _TARGET_LIFT_M = 0.10
 
 GRIPPER_OPEN_RAD = 0.72
 GRIPPER_CLOSE_RAD = 0.0
+
+
+class _TableContactFeedback:
+    """Summarize solver-measured left-arm contact with the table during one motion."""
+
+    def __init__(self, model: mujoco.MjModel) -> None:
+        self.model = model
+        self.table_id = model.body("table").id
+        root_id = model.body("proximal_pitch_L_Link").id
+        self.arm_bodies = {root_id}
+        for body in range(root_id + 1, model.nbody):
+            if model.body_parentid[body] in self.arm_bodies:
+                self.arm_bodies.add(body)
+        self.force = np.empty(6)
+        self.summary: dict[int, tuple[float, int]] | None = None
+
+    def sample(self, data: mujoco.MjData) -> None:
+        if self.summary is None:
+            return
+        body_loads: dict[int, float] = {}
+        for index, contact in enumerate(data.contact):
+            if contact.efc_address < 0 or contact.geom1 < 0 or contact.geom2 < 0:
+                continue
+            a, b = self.model.geom_bodyid[contact.geom]
+            if a != self.table_id and b != self.table_id:
+                continue
+            body = b if a == self.table_id else a
+            if body in self.arm_bodies:
+                mujoco.mj_contactForce(self.model, data, index, self.force)
+                if self.force[0] > 0:
+                    body_loads[body] = body_loads.get(body, 0.0) + float(self.force[0])
+        for body, load in body_loads.items():
+            peak_load, loaded_steps = self.summary.get(body, (0.0, 0))
+            self.summary[body] = max(peak_load, load), loaded_steps + 1
 
 
 def _rotmat_to_quat_wxyz(rot: np.ndarray) -> np.ndarray:
@@ -148,6 +184,7 @@ class Tron2CubeLiftLowLevel(BaseEnv):
         self._physics_stop = threading.Event()
         self._physics_thread: threading.Thread | None = None
         self._physics_error: Exception | None = None
+        self._table_contact_feedback = _TableContactFeedback(self.model)
         self._state_spec = mujoco.mjtState.mjSTATE_INTEGRATION
         self._state_buffer = np.empty(mujoco.mj_stateSize(self.model, self._state_spec))
 
@@ -187,6 +224,7 @@ class Tron2CubeLiftLowLevel(BaseEnv):
                         self._motor.apply_control()
                         self._apply_gripper_control(self._motor_data)
                         mujoco.mj_step(self.model, self._motor_data)
+                        self._table_contact_feedback.sample(self._motor_data)
                         self._motor.publish_state_if_due()
                 deadline += dt
                 now = time.monotonic()
@@ -251,6 +289,23 @@ class Tron2CubeLiftLowLevel(BaseEnv):
 
     # ----------------------- High-Level Motion Primitives -----------------------
 
+    @contextmanager
+    def motion_feedback(self, stage: str) -> Iterator[None]:
+        """Report table contact once per link after the action phase, outside the physics thread."""
+        tracker = self._table_contact_feedback
+        summary: dict[int, tuple[float, int]] = {}
+        with self._physics_lock:
+            previous = tracker.summary
+            tracker.summary = summary
+        try:
+            yield
+        finally:
+            with self._physics_lock:
+                tracker.summary = previous
+            for body, (peak, steps) in sorted(summary.items()):
+                print(f"[TRON2] TABLE_CONTACT stage={stage} link={self.model.body(body).name} "
+                      f"peak_normal_force_n={peak:.3f} loaded_duration_s={steps * self.model.opt.timestep:.3f}")
+
     def move_home(self, duration_sec: float = 2.5) -> dict[str, Any]:
         """Move both arms to official safe home pose (MoveJ) and open grippers."""
         self._ensure_connected()
@@ -294,14 +349,18 @@ class Tron2CubeLiftLowLevel(BaseEnv):
         return resp
 
     def _record_joint_limit_rejection(self, error: Tron2JointLimitRejection) -> None:
-        print(f"[TRON2] Joint limit: {error.response['message']}")
+        print(f"[TRON2] CONTROLLER_JOINT_LIMIT {error.response['message']}")
+        self.record_rejected_motion()
+
+    def record_rejected_motion(self) -> None:
+        """Capture the held simulation state after a motion request fails."""
         self._wait_and_record(0.35)
         self._step_count += 1
 
     def move_left_joint_path(self, path: np.ndarray, duration_sec: float) -> bool:
-        """Follow one checked CGN path segment. Return false if a joint limit stops it."""
+        """Follow one joint path segment. Return false on rejection or settle timeout."""
         self._ensure_connected()
-        for left in path[1:]:
+        for waypoint, left in enumerate(path[1:], start=1):
             q = self._read_arm_joints()
             target = np.r_[left, q[7:14]]
             duration = max(0.65, duration_sec / (len(path) - 1), np.max(np.abs(left - q[:7])) / 0.45)
@@ -312,11 +371,14 @@ class Tron2CubeLiftLowLevel(BaseEnv):
                 return False
             self._wait_and_record(duration + 0.35)
             deadline = time.monotonic() + 3.0
-            while np.max(np.abs(self._read_arm_joints()[:7] - left)) > 0.015:
+            while np.max(np.abs((measured := self._read_arm_joints()[:7]) - left)) > 0.015:
                 if time.monotonic() >= deadline:
-                    # The next command starts from measured joints. The caller
-                    # checks the actual TCP at the end of the Cartesian segment.
-                    break
+                    joint = int(np.argmax(np.abs(measured - left)))
+                    print(f"[TRON2] WAYPOINT_NOT_REACHED waypoint={waypoint}/{len(path) - 1} "
+                          f"joint={PROTOCOL_JOINT_NAMES[joint]} target_rad={left[joint]:.4f} "
+                          f"measured_rad={measured[joint]:.4f}")
+                    self._step_count += 1
+                    return False
                 self._wait_and_record(0.12)
         self._step_count += 1
         return True

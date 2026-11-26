@@ -29,8 +29,13 @@ env:
       A 0.12 to 0.16 m tool lift allows some margin for the 0.10 m cube-height goal.
       If the previous code reached the selected grasp and closed the gripper, you can
       correct the lift command from that state. Keep the cube held through evaluation.
-      A motion warning means that motion or a subsequent stage may have been skipped.
-      You can request a different CGN proposal with sample_grasp_pose("red cube", candidate_rank=1).
+      Read the motion stage and measured TCP before deciding how to recover.
+      TABLE_CONTACT gives the link and measured contact load. Contact alone can occur
+      during an otherwise successful move. If the controller rejects a target or the
+      arm does not reach it, plan your next action from the resulting pose.
+      If the selected approach fails to plan, you can choose another CGN proposal with
+      sample_grasp_pose("red cube", candidate_rank=1), or choose the other assignment
+      of the jaws for the same rank with jaw_branch=0 or jaw_branch=1.
       If more action or a check is needed, reply REGENERATE followed by a fenced Python code block.
       Reply FINISH if you are done with the episode.
 
