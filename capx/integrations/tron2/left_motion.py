@@ -39,7 +39,7 @@ class Tron2LeftMotionApi(ApiBase):
     _motion_log_name = "TRON2"
 
     def get_left_ee_pose(self) -> tuple[np.ndarray, np.ndarray]:
-        """Get the left gripper fingertip (TCP) pose in base_Link frame.
+        """Get the pose of the left gripper's fixed tool origin (TCP) in base_Link.
 
         Returns:
             Tuple of (position (3,), quaternion_wxyz (4,)).
@@ -125,7 +125,8 @@ class Tron2LeftMotionApi(ApiBase):
 
         Args:
             pos: Target [x, y, z] in meters.
-            quat_wxyz: Target orientation [w, x, y, z]. Omit to keep the measured orientation.
+            quat_wxyz: Target orientation [w, x, y, z]. Omit or pass None to fix
+                the target orientation to the one measured at the start of this call.
             approach_offset: Optional backoff in meters along the tool's +Z axis. A positive
                 offset moves above the pre-grasp, to the pre-grasp, then to the target.
             duration_sec: Requested duration in seconds per stage.

@@ -123,6 +123,14 @@ class Tron2RgbdNoCgnHighApi(Tron2LeftMotionApi):
             "close_gripper_left": self.close_gripper_left,
         }
 
+    def get_left_ee_pose(self) -> tuple[np.ndarray, np.ndarray]:
+        """Return the left tool origin (TCP) position and WXYZ orientation in base_Link.
+
+        The quaternion rotates TCP-local vectors into base_Link. TCP local -Z
+        points toward the fingertips, and local +Y is the signed jaw axis.
+        """
+        return super().get_left_ee_pose()
+
     def observe_object(self, object_name: str, cameras: tuple[str, ...] = CAMERAS) -> dict[str, Any]:
         """Segment an object on synchronized metric RGB-D views and estimate visible 3D bounds.
 
@@ -134,10 +142,11 @@ class Tron2RgbdNoCgnHighApi(Tron2LeftMotionApi):
             A dictionary with ok, frame (base_Link), and views. If ok is True,
             bounds_min_m, bounds_max_m, bounds_midpoint_m, visible_surface_median_m,
             and visible_extent_m are top-level keys with XYZ lists in meters.
-            These describe visible surfaces. Top-level nearby_background_z_m is the
-            median Z of pooled nearby unmasked depth points, or None. The points can
-            include the table as well as other geometry. The views list also contains
-            per-camera diagnostics.
+            These are axis-aligned estimates from the visible surfaces of the
+            cameras that succeeded. At least one valid view is enough for ok=True.
+            nearby_background_z_m is the median Z of nearby unmasked depth points
+            or None. It may include other geometry and does not estimate a table
+            plane. The views list contains per-camera diagnostics.
         """
         if not isinstance(object_name, str) or not object_name.strip():
             raise ValueError("object_name must be a nonempty SAM3 text prompt")
@@ -203,9 +212,10 @@ class Tron2RgbdNoCgnHighApi(Tron2LeftMotionApi):
                 projection perpendicular to finger_direction becomes TCP +Y.
 
         Returns:
-            Tuple (tcp_xyz, quat_wxyz), both Python lists. The conversion uses
-            the calibrated pad midpoint at a 50 mm opening. Use check_pose_left
-            to test the planned path to the pose from the current state.
+            Tuple (tcp_xyz, quat_wxyz), both Python lists. The TCP position
+            already accounts for the nominal pad midpoint calibrated at a
+            50 mm opening. Keep the returned position and orientation paired
+            when targeting that pad midpoint.
 
         Raises:
             ValueError: Inputs must be finite XYZ vectors with nonzero,
@@ -233,17 +243,21 @@ class Tron2RgbdNoCgnHighApi(Tron2LeftMotionApi):
     def check_pose_left(
         self, pos: list[float] | np.ndarray, quat_wxyz: list[float] | np.ndarray | None = None,
     ) -> dict[str, bool | str | None]:
-        """Check the local left TCP path from the current measured state without commanding motion.
+        """Check one straight Cartesian TCP path without moving the left arm.
+
+        Every call starts from the robot's current measured state. A previous
+        check has no effect on the start of the next check.
 
         Args:
             pos: Target XYZ in meters in base_Link.
-            quat_wxyz: Target WXYZ orientation. Omit to use the measured orientation.
+            quat_wxyz: Target WXYZ orientation. Omit or pass None to fix the
+                target orientation to the one measured at the start of this call.
 
         Returns:
-            A dictionary with plan_ok and reason (None on success). A successful
-            check covers joint limits, continuity, and robot self-collision at
-            the planned waypoints. Table and object clearance and actual motion
-            tracking require separate verification.
+            A dictionary with plan_ok (bool) and reason (None on success, a
+            string on failure). A successful check covers joint limits,
+            continuity, and robot self-collision at the planned waypoints.
+            Table and object clearance and motion tracking are separate.
         """
         target = np.asarray(pos, dtype=float).reshape(3)
         if not np.isfinite(target).all():
@@ -267,7 +281,8 @@ class Tron2RgbdNoCgnHighApi(Tron2LeftMotionApi):
 
         Args:
             pos: Target XYZ position in meters.
-            quat_wxyz: WXYZ orientation. Omit to hold the measured orientation.
+            quat_wxyz: Target WXYZ orientation. Omit or pass None to fix the
+                target orientation to the one measured at the start of this call.
                 Local -Z points along the fingertips and local Y spans the jaws.
             duration_sec: Requested motion duration in seconds.
             stage: Descriptive motion label for the log.
@@ -285,7 +300,11 @@ class Tron2RgbdNoCgnHighApi(Tron2LeftMotionApi):
             self._env.set_gripper("left", 1.0)
 
     def close_gripper_left(self) -> None:
-        """Close the left parallel gripper."""
+        """Command closure and log the measured inner jaw gap in millimeters.
+
+        Returns None. The gap measures jaw separation. Verify object motion
+        separately to confirm a grasp.
+        """
         with self._env.motion_feedback("close"):
             self._env.set_gripper("left", 0.0)
         aperture_mm = 1000.0 * _left_pad_aperture_m(self._env)

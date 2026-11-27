@@ -1,4 +1,4 @@
-"""Apply eval-only time budgets to the exact stock TRON2 runner sources."""
+"""Apply eval-only settings to the exact stock TRON2 runner sources."""
 
 from __future__ import annotations
 
@@ -42,6 +42,24 @@ class EvalFinder(MetaPathFinder):
             raise ImportError(f"Cannot find Python source for {fullname}")
         spec.loader = EvalLoader(spec.loader, self.changes[fullname])
         return spec
+
+
+_FRONT_CAMERA_CAPTION = (
+    "This image comes from robot0_robotview, the fixed camera facing TRON2 from the front. "
+    "The robot's left shoulder appears on the viewer's right."
+)
+
+
+def label_front_camera_image(env, prompt: list[dict], image_url: str | None) -> None:
+    """Caption the main RGB image when it comes from the front-facing TRON2 camera."""
+    if image_url is None or getattr(env.low_level_env, "save_camera_name", None) != "robot0_robotview":
+        return
+    content = prompt[-1]["content"]
+    for index in range(len(content) - 1, -1, -1):
+        part = content[index]
+        if part["type"] == "image_url" and part["image_url"]["url"] == image_url:
+            content.insert(index, {"type": "text", "text": _FRONT_CAMERA_CAPTION})
+            return
 
 
 _PAYLOAD_ANCHOR = '    headers = {"Content-Type": "application/json"}\n    if args.api_key:'
@@ -144,7 +162,15 @@ def install() -> None:
         ),
         "capx.envs.trial": (
             ("signal.alarm(1000)", f"signal.alarm({trial})", 1),
-            ("from PIL import Image\n", "from PIL import Image\n\nfrom model_feedback import compact_servoj_feedback\n", 1),
+            ("from PIL import Image\n",
+             "from PIL import Image\n\nfrom model_feedback import compact_servoj_feedback\n"
+             "from runtime_overrides import label_front_camera_image\n", 1),
+            ('        if initial_wrist_base64 is not None:\n            obs["full_prompt"][-1]["content"].append(',
+             '        label_front_camera_image(env, obs["full_prompt"], initial_base64)\n'
+             '        if initial_wrist_base64 is not None:\n            obs["full_prompt"][-1]["content"].append(', 1),
+            ('    # Query model\n    multiturn_ensemble_entry = None',
+             '    label_front_camera_image(env, decision_prompt, visual_feedback_base64)\n\n'
+             '    # Query model\n    multiturn_ensemble_entry = None', 1),
             ('        console_stdout=info_step["stdout"],\n        console_stderr=info_step["stderr"],',
              '        console_stdout=compact_servoj_feedback(info_step["stdout"]),\n'
              '        console_stderr=compact_servoj_feedback(info_step["stderr"]),', 1),

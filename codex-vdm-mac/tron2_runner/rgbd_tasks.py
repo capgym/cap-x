@@ -11,7 +11,9 @@ leave it held at least 10 cm above its initial height. The height criterion
 applies to the red cube itself.
 
 Coordinates are in meters in base_Link. +X is forward, +Y is left, +Z is up.
-The open gripper spans about 75 mm.
+Left refers to the robot's own left side. The `*_left` APIs refer to the
+arm attached at the +Y shoulder.
+The fully open simulated gripper has a nominal inner gap of about 78 mm.
 
 Call `reading = observe_object("red cube")` and check `reading["ok"]`.
 `reading["bounds_midpoint_m"]` estimates the center of its visible surfaces.
@@ -28,10 +30,10 @@ base_Link. Convert the geometry into a TCP pose with this Python interface:
 
     tcp_xyz, quat_wxyz = make_grasp_pose(contact_center_m, finger_direction, jaw_direction)
 
-The converter applies the calibrated finger-pad offset and handles quaternion
-conventions. Pass its two outputs to `goto_pose_left` and keep the quaternion
-when moving with the same orientation. Choose the approach, contact, and lift
-waypoints that suit your chosen geometry. Open the jaws before entering the grasp.
+The converter returns the tool origin (TCP) and orientation as a pair.
+Use both outputs to target the chosen pad midpoint. Choose the approach,
+contact, and lift waypoints that suit your chosen geometry. Open the jaws
+before entering the grasp.
 Log the chosen directions and label each motion with a descriptive `stage=`.
 Use `check_pose_left(pos, quat_wxyz)` to test candidates without moving the arm.
 You may query alternatives in the same code block when `plan_ok` is False.
