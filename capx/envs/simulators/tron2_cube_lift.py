@@ -22,6 +22,7 @@ from capx.envs.base import BaseEnv
 from capx.integrations.tron2.motor_sim import MotorTransport, Tron2MotorSim
 from capx.integrations.tron2.official_client import (
     DEFAULT_HOME_Q16,
+    LEFT_WRIST_TO_TCP_M,
     PROTOCOL_JOINT_NAMES,
     Tron2JointLimitRejection,
     Tron2MotionRejection,
@@ -40,6 +41,45 @@ _TARGET_LIFT_M = 0.10
 GRIPPER_OPEN_RAD = 0.72
 GRIPPER_CLOSE_RAD = 0.0
 
+_SERVOJ_CONTACT_FORCE_N = 50.0
+_SERVOJ_CONTACT_DWELL_S = 0.010
+_SERVOJ_HOLD_DWELL_S = 0.100
+
+
+class _ServoJTableContact:
+    """Collect one contact trigger and the resulting force and speed under the physics lock."""
+
+    def __init__(self, qpos: np.ndarray, left_dofs: np.ndarray) -> None:
+        self.qpos = qpos
+        self.left_dofs = left_dofs
+        self.over_since: dict[int, float] = {}
+        self.detected = threading.Event()
+        self.trigger: dict[str, Any] = {}
+        self.force_low_since_s: float | None = None
+        self.speed_low_since_s: float | None = None
+        self.latest: dict[str, Any] = {}
+
+    def observe_after_contact(self, data: mujoco.MjData, table_force_n: float) -> None:
+        now = float(data.time)
+        speed = float(np.max(np.abs(data.qvel[self.left_dofs])))
+        if table_force_n > 5.0:
+            self.force_low_since_s = None
+        elif self.force_low_since_s is None:
+            self.force_low_since_s = now
+        if speed > 0.025:
+            self.speed_low_since_s = None
+        elif self.speed_low_since_s is None:
+            self.speed_low_since_s = now
+        self.latest = {
+            "sim_time_s": now,
+            "total_normal_force_n": table_force_n,
+            "max_left_joint_speed_rad_s": speed,
+            "unloaded": self.force_low_since_s is not None
+            and now - self.force_low_since_s + 1e-12 >= _SERVOJ_HOLD_DWELL_S,
+            "stationary": self.speed_low_since_s is not None
+            and now - self.speed_low_since_s + 1e-12 >= _SERVOJ_HOLD_DWELL_S,
+        }
+
 
 class _TableContactFeedback:
     """Summarize solver-measured left-arm contact with the table during one motion."""
@@ -47,6 +87,8 @@ class _TableContactFeedback:
     def __init__(self, model: mujoco.MjModel) -> None:
         self.model = model
         self.table_id = model.body("table").id
+        self.base_id = model.body("base_Link").id
+        self.wrist_id = model.body("wrist_roll_L_Link").id
         root_id = model.body("proximal_pitch_L_Link").id
         self.arm_bodies = {root_id}
         for body in range(root_id + 1, model.nbody):
@@ -55,11 +97,20 @@ class _TableContactFeedback:
         self.force = np.empty(6)
         self.summary: dict[int, tuple[float, int]] | None = None
         self.loaded = False
+        self.servoj: _ServoJTableContact | None = None
+
+    def left_tcp_base(self, data: mujoco.MjData) -> list[float]:
+        wrist_rotation = data.xmat[self.wrist_id].reshape(3, 3)
+        tcp_world = data.xpos[self.wrist_id] + wrist_rotation @ LEFT_WRIST_TO_TCP_M
+        base_rotation = data.xmat[self.base_id].reshape(3, 3)
+        return (base_rotation.T @ (tcp_world - data.xpos[self.base_id])).tolist()
 
     def sample(self, data: mujoco.MjData) -> None:
-        if self.summary is None:
+        guard = self.servoj
+        if self.summary is None and guard is None:
             return
         body_loads: dict[int, float] = {}
+        normal_vectors: dict[int, np.ndarray] = {}
         for index, contact in enumerate(data.contact):
             if contact.efc_address < 0 or contact.geom1 < 0 or contact.geom2 < 0:
                 continue
@@ -70,11 +121,211 @@ class _TableContactFeedback:
             if body in self.arm_bodies:
                 mujoco.mj_contactForce(self.model, data, index, self.force)
                 if self.force[0] > 0:
-                    body_loads[body] = body_loads.get(body, 0.0) + float(self.force[0])
+                    force_n = float(self.force[0])
+                    body_loads[body] = body_loads.get(body, 0.0) + force_n
+                    if guard is not None and not guard.detected.is_set():
+                        normal = force_n * contact.frame[:3]
+                        if a != self.table_id:
+                            normal = -normal
+                        if body in normal_vectors:
+                            normal_vectors[body] += normal
+                        else:
+                            normal_vectors[body] = normal
         self.loaded = bool(body_loads)
-        for body, load in body_loads.items():
-            peak_load, loaded_steps = self.summary.get(body, (0.0, 0))
-            self.summary[body] = max(peak_load, load), loaded_steps + 1
+        if self.summary is not None:
+            for body, load in body_loads.items():
+                peak_load, loaded_steps = self.summary.get(body, (0.0, 0))
+                self.summary[body] = max(peak_load, load), loaded_steps + 1
+        if guard is None:
+            return
+        if not guard.detected.is_set():
+            now = float(data.time)
+            guard.over_since = {
+                body: guard.over_since.get(body, now)
+                for body, load in body_loads.items()
+                if load >= _SERVOJ_CONTACT_FORCE_N
+            }
+            qualifying = [body for body, start in guard.over_since.items()
+                          if now - start + 1e-12 >= _SERVOJ_CONTACT_DWELL_S]
+            if not qualifying:
+                return
+            body = max(qualifying, key=body_loads.__getitem__)
+            guard.trigger = {
+                "sim_time_s": now,
+                "wall_monotonic_s": time.monotonic(),
+                "link": self.model.body(body).name,
+                "normal_force_n": body_loads[body],
+                "normal_force_world_n": normal_vectors[body].tolist(),
+                "tcp_base_m": self.left_tcp_base(data),
+                "q16_rad": data.qpos[guard.qpos].tolist(),
+            }
+            guard.detected.set()
+        guard.observe_after_contact(data, sum(body_loads.values()))
+
+
+_GRIPPER_BASE_TO_TCP_M = np.array([-0.0021, 0.0, -0.1313])
+
+
+class _GripperTrace:
+    """Sample the solver's state without modifying the simulation or writing files."""
+
+    def __init__(self, model: mujoco.MjModel, cube_id: int, drive_dof: int) -> None:
+        self.model = model
+        self.cube_id = cube_id
+        self.drive_dof = drive_dof
+        self.table_id = model.body("table").id
+        self.gripper_id = model.body("grasper_base_L_Link").id
+        self.pad_left_id = model.body("grasper_L_jaw_left_Link").id
+        self.pad_right_id = model.body("grasper_L_jaw_right_Link").id
+        self.pad_sides = {self.pad_left_id: "left", self.pad_right_id: "right"}
+        self.pad_mesh_z_bounds = {pad: self._mesh_z_bounds(pad) for pad in self.pad_sides}
+        self.arm_bodies = self._subtree(model.body("proximal_pitch_L_Link").id)
+        self.gripper_bodies = self._subtree(self.gripper_id)
+        self.drive_position_sensor = int(model.sensor("grasper_L_drive_pos").adr[0])
+        self.drive_velocity_sensor = int(model.sensor("grasper_L_drive_vel").adr[0])
+        self.base_position_sensor = int(model.sensor("grasper_base_L_pos").adr[0])
+        self.force = np.empty(6)
+        self.velocity = np.empty(6)
+        self.enabled = False
+        self.sample_every_steps = 5
+        self.steps_until_sample = 0
+        self.phase = ""
+        self.rows: list[dict[str, float | str]] = []
+
+    def _subtree(self, root: int) -> set[int]:
+        bodies = {root}
+        for body in range(root + 1, self.model.nbody):
+            if self.model.body_parentid[body] in bodies:
+                bodies.add(body)
+        return bodies
+
+    def _mesh_z_bounds(self, body_id: int) -> tuple[float, float] | None:
+        """Longitudinal limits of the collision vertices in the jaw frame."""
+        rotation = np.empty(9)
+        ranges = []
+        for geom in np.flatnonzero(self.model.geom_bodyid == body_id):
+            if self.model.geom_type[geom] != mujoco.mjtGeom.mjGEOM_MESH:
+                continue
+            if not (self.model.geom_contype[geom] or self.model.geom_conaffinity[geom]):
+                continue
+            mesh = self.model.geom_dataid[geom]
+            first = self.model.mesh_vertadr[mesh]
+            count = self.model.mesh_vertnum[mesh]
+            mujoco.mju_quat2Mat(rotation, self.model.geom_quat[geom])
+            z = self.model.mesh_vert[first:first + count] @ rotation[6:] + self.model.geom_pos[geom, 2]
+            ranges.append((float(z.min()), float(z.max())))
+        if ranges:
+            return min(lo for lo, _ in ranges), max(hi for _, hi in ranges)
+        return None
+
+    def _contact_forces(self, data: mujoco.MjData) -> dict[str, float]:
+        forces = dict(
+            pad_left_table_normal_n=0.0, pad_right_table_normal_n=0.0,
+            left_gripper_table_normal_n=0.0, left_arm_table_normal_n=0.0,
+            cube_table_normal_n=0.0, cube_table_normal_z_n=0.0,
+        )
+        # Rows contain normal-force-weighted centers and utilization means.
+        # Coordinate fields are zero when the contact count is zero.
+        pads = {pad: dict(
+            normal_n=0.0, normal_z_n=0.0, tangent_z_n=0.0, contact_count=0.0,
+            contact_x_jaw_m=0.0, contact_y_jaw_m=0.0, contact_z_jaw_m=0.0,
+            contact_z_jaw_min_m=0.0, contact_z_jaw_max_m=0.0, mesh_end_clearance_m=0.0,
+            friction_utilization=0.0, friction_utilization_max=0.0, sliding_utilization=0.0,
+        ) for pad in self.pad_sides}
+        pyramidal = self.model.opt.cone == mujoco.mjtCone.mjCONE_PYRAMIDAL
+        for index, contact in enumerate(data.contact):
+            if contact.efc_address < 0:
+                continue
+            a, b = self.model.geom_bodyid[contact.geom]
+            if a == self.table_id or b == self.table_id:
+                other = b if a == self.table_id else a
+                if other not in self.arm_bodies and other != self.cube_id:
+                    continue
+                mujoco.mj_contactForce(self.model, data, index, self.force)
+                normal = max(0.0, self.force[0])
+                if other == self.cube_id:
+                    forces["cube_table_normal_n"] += normal
+                    forces["cube_table_normal_z_n"] += (1 if b == self.cube_id else -1) * normal * contact.frame[2]
+                else:
+                    forces["left_arm_table_normal_n"] += normal
+                    if other in self.gripper_bodies:
+                        forces["left_gripper_table_normal_n"] += normal
+                    if other == self.pad_left_id:
+                        forces["pad_left_table_normal_n"] += normal
+                    elif other == self.pad_right_id:
+                        forces["pad_right_table_normal_n"] += normal
+            elif a == self.cube_id or b == self.cube_id:
+                other = b if a == self.cube_id else a
+                if other not in pads:
+                    continue
+                mujoco.mj_contactForce(self.model, data, index, self.force)
+                normal = float(self.force[0])
+                if normal <= 0.0:
+                    continue
+                pad = pads[other]
+                sign = 1 if b == self.cube_id else -1
+                pad["normal_n"] += normal
+                pad["normal_z_n"] += sign * normal * contact.frame[2]
+                pad["tangent_z_n"] += sign * (self.force[1] * contact.frame[5] + self.force[2] * contact.frame[8])
+                local = data.xmat[other].reshape(3, 3).T @ (contact.pos - data.xpos[other])
+                pad["contact_x_jaw_m"] += normal * local[0]
+                pad["contact_y_jaw_m"] += normal * local[1]
+                pad["contact_z_jaw_m"] += normal * local[2]
+                if pad["contact_count"] == 0:
+                    pad["contact_z_jaw_min_m"] = pad["contact_z_jaw_max_m"] = local[2]
+                else:
+                    pad["contact_z_jaw_min_m"] = min(pad["contact_z_jaw_min_m"], local[2])
+                    pad["contact_z_jaw_max_m"] = max(pad["contact_z_jaw_max_m"], local[2])
+                pad["contact_count"] += 1
+
+                # Decoded wrench normalized by the available friction. The
+                # pyramidal cone uses the L1 norm in wrench space. The elliptic
+                # cone uses L2. Include spin/roll in total utilization.
+                scaled = self.force[1:contact.dim] / np.maximum(contact.friction[:contact.dim - 1], 1e-12)
+                order = 1 if pyramidal else 2
+                utilization = float(np.linalg.norm(scaled, ord=order))
+                pad["friction_utilization"] += utilization
+                pad["friction_utilization_max"] = max(pad["friction_utilization_max"], utilization / normal)
+                pad["sliding_utilization"] += float(np.linalg.norm(scaled[:2], ord=order))
+
+        for body, pad in pads.items():
+            total = pad["normal_n"]
+            if total > 0:
+                for key in ("contact_x_jaw_m", "contact_y_jaw_m", "contact_z_jaw_m",
+                            "friction_utilization", "sliding_utilization"):
+                    pad[key] /= total
+                bounds = self.pad_mesh_z_bounds[body]
+                if bounds is not None:
+                    lo, hi = bounds
+                    pad["mesh_end_clearance_m"] = min(pad["contact_z_jaw_min_m"] - lo,
+                                                       hi - pad["contact_z_jaw_max_m"])
+            forces.update({f"pad_{self.pad_sides[body]}_cube_{key}": float(value) for key, value in pad.items()})
+        return forces
+
+    def sample_if_due(self, data: mujoco.MjData, target_q: float) -> None:
+        if self.steps_until_sample:
+            self.steps_until_sample -= 1
+            return
+        self.steps_until_sample = self.sample_every_steps - 1
+        # mj_step advances time and qpos after solving. Position and velocity
+        # sensors, contact forces, and Cartesian kinematics describe its input
+        # state, so timestamp the row before integration.
+        offset = data.xmat[self.gripper_id].reshape(3, 3) @ _GRIPPER_BASE_TO_TCP_M
+        tcp = data.xpos[self.gripper_id] + offset
+        mujoco.mj_objectVelocity(self.model, data, mujoco.mjtObj.mjOBJ_XBODY, self.gripper_id, self.velocity, 0)
+        tcp_velocity = self.velocity[3:] + np.cross(self.velocity[:3], offset)
+        mujoco.mj_objectVelocity(self.model, data, mujoco.mjtObj.mjOBJ_XBODY, self.cube_id, self.velocity, 0)
+        self.rows.append(dict(
+            time_sec=float(data.time - self.model.opt.timestep), phase=self.phase,
+            target_q_rad=float(target_q), q_rad=float(data.sensordata[self.drive_position_sensor]),
+            qvel_rad_s=float(data.sensordata[self.drive_velocity_sensor]),
+            drive_tau_nm=float(data.qfrc_actuator[self.drive_dof]),
+            base_angle_rad=float(data.sensordata[self.base_position_sensor]),
+            cube_z_m=float(data.xpos[self.cube_id, 2]), cube_vz_m_s=float(self.velocity[5]),
+            tcp_x_m=float(tcp[0]), tcp_y_m=float(tcp[1]), tcp_z_m=float(tcp[2]),
+            tcp_speed_m_s=float(np.linalg.norm(tcp_velocity)), tcp_vz_m_s=float(tcp_velocity[2]),
+            **self._contact_forces(data),
+        ))
 
 
 def _rotmat_to_quat_wxyz(rot: np.ndarray) -> np.ndarray:
@@ -177,6 +428,7 @@ class Tron2CubeLiftLowLevel(BaseEnv):
         self._record_stride = 2  # approximately 20 frames per second during motion
 
         self._joint_qpos = np.array([self.model.joint(name).qposadr[0] for name in PROTOCOL_JOINT_NAMES])
+        self._left_joint_dofs = np.array([self.model.joint(name).dofadr[0] for name in PROTOCOL_JOINT_NAMES[:7]])
         self._motor_data.qpos[self._joint_qpos] = DEFAULT_HOME_Q16
         self._reset_cube(self._motor_data)
         mujoco.mj_forward(self.model, self._motor_data)
@@ -189,6 +441,7 @@ class Tron2CubeLiftLowLevel(BaseEnv):
         self._physics_thread: threading.Thread | None = None
         self._physics_error: Exception | None = None
         self._table_contact_feedback = _TableContactFeedback(self.model)
+        self._gripper_trace: _GripperTrace | None = None
         self._state_spec = mujoco.mjtState.mjSTATE_INTEGRATION
         self._state_buffer = np.empty(mujoco.mj_stateSize(self.model, self._state_spec))
 
@@ -226,9 +479,12 @@ class Tron2CubeLiftLowLevel(BaseEnv):
                         self._motor.publish_state_if_due(clock_time_sec=time.monotonic() - started)
                     else:
                         self._motor.apply_control()
-                        self._apply_gripper_control(self._motor_data)
+                        target_q = self._apply_gripper_control(self._motor_data)
                         mujoco.mj_step(self.model, self._motor_data)
                         self._table_contact_feedback.sample(self._motor_data)
+                        trace = self._gripper_trace
+                        if trace is not None and trace.enabled:
+                            trace.sample_if_due(self._motor_data, target_q)
                         self._motor.publish_state_if_due()
                 deadline += dt
                 now = time.monotonic()
@@ -268,15 +524,17 @@ class Tron2CubeLiftLowLevel(BaseEnv):
         with self._physics_lock:
             return self._motor_data.qpos[self._joint_qpos]
 
-    def _apply_gripper_control(self, data: mujoco.MjData) -> None:
+    def _apply_gripper_control(self, data: mujoco.MjData) -> float:
+        left_target = self._grip_l
         for (qpos_adr, dof_adr, act_id, kp, kd, lo, hi), target in (
             (self._grip_base_l, 0.0),
             (self._grip_base_r, 0.0),
-            (self._grip_drv_l, self._grip_l),
+            (self._grip_drv_l, left_target),
             (self._grip_drv_r, self._grip_r),
         ):
             tau = kp * (target - data.qpos[qpos_adr]) - kd * data.qvel[dof_adr] + data.qfrc_bias[dof_adr]
             data.ctrl[act_id] = float(np.clip(tau, lo, hi))
+        return left_target
 
     def _wait_and_record(self, duration_sec: float) -> None:
         """Wait for the independent motor loop and record observation snapshots."""
@@ -292,6 +550,39 @@ class Tron2CubeLiftLowLevel(BaseEnv):
         self._check_physics()
 
     # ----------------------- High-Level Motion Primitives -----------------------
+
+    @contextmanager
+    def servoj_table_contact_guard(self) -> Iterator[_ServoJTableContact]:
+        """Monitor only this left-arm ServoJ action, including its settling time."""
+        guard = _ServoJTableContact(self._joint_qpos, self._left_joint_dofs)
+        tracker = self._table_contact_feedback
+        with self._physics_lock:
+            if tracker.servoj is not None:
+                raise RuntimeError("A left-arm ServoJ action is already active")
+            tracker.servoj = guard
+        try:
+            yield guard
+        finally:
+            with self._physics_lock:
+                if tracker.servoj is guard:
+                    tracker.servoj = None
+
+    def finish_servoj_without_contact(self, guard: _ServoJTableContact) -> bool:
+        """Disarm and decide completion atomically with the last physics sample."""
+        with self._physics_lock:
+            if guard.detected.is_set():
+                return False
+            self._table_contact_feedback.servoj = None
+            return True
+
+    def servoj_contact_state(self, guard: _ServoJTableContact) -> dict[str, Any]:
+        """Read force, joint speed, and TCP in base_Link after the hold request."""
+        with self._physics_lock:
+            tcp = self._table_contact_feedback.left_tcp_base(self._motor_data)
+            return {**guard.latest, "tcp_base_m": tcp}
+
+    def servoj_hold_target_received(self, target: np.ndarray, sent_after_s: float) -> bool:
+        return self._motor.position_target_matches(target, received_after_s=sent_after_s, tolerance_rad=0.001)
 
     @contextmanager
     def motion_feedback(self, stage: str) -> Iterator[None]:
@@ -505,6 +796,16 @@ class Tron2CubeLiftLowLevel(BaseEnv):
             self._reset_cube(self._motor_data)
             mujoco.mj_forward(self.model, self._motor_data)
         self._wait_and_record(0.15)
+        # ServoJ carries both head axes. Engage the official head position hold
+        # before inference can leave the head in damping-only mode under gravity.
+        head_home_sec = 2.5
+        try:
+            self.client.move_h(DEFAULT_HOME_Q16[14:16], duration_sec=head_home_sec)
+        except Tron2MotionRejection as error:
+            self._log_motion_rejection(error, "reset-head-home")
+            self.record_rejected_motion()
+        else:
+            self._wait_and_record(head_home_sec + 0.5)
         self._cube_init_world = self._observation_data().xpos[self._cube_id].copy()
         return self.get_observation(), {}
 
@@ -544,6 +845,46 @@ class Tron2CubeLiftLowLevel(BaseEnv):
     def task_completed(self) -> bool:
         target_z = self._cube_init_world[2] + _TARGET_LIFT_M
         return bool(self._observation_data().xpos[self._cube_id, 2] >= target_z)
+
+    # ----------------------- Gripper Diagnostics -----------------------
+
+    def enable_gripper_trace(
+        self, enabled: bool = True, *, clear: bool = True, sample_every_steps: int = 5,
+    ) -> None:
+        """Toggle in-memory solver telemetry for the left gripper."""
+        if not isinstance(sample_every_steps, int) or sample_every_steps < 1:
+            raise ValueError("sample_every_steps must be a positive integer")
+        with self._physics_lock:
+            if self._gripper_trace is None:
+                if not enabled:
+                    return
+                self._gripper_trace = _GripperTrace(self.model, self._cube_id, self._grip_drv_l[1])
+            trace = self._gripper_trace
+            trace.enabled = enabled
+            trace.sample_every_steps = sample_every_steps
+            trace.steps_until_sample = 0
+            if clear:
+                trace.rows = []
+                trace.phase = ""
+
+    def mark_gripper_trace(self, phase: str) -> None:
+        """Label subsequent samples and record the next physics step."""
+        with self._physics_lock:
+            if self._gripper_trace is not None:
+                self._gripper_trace.phase = phase
+                self._gripper_trace.steps_until_sample = 0
+
+    def get_gripper_trace(self, *, clear: bool = False) -> list[dict[str, float | str]]:
+        """Copy recorded samples, with optional atomic buffer drain."""
+        with self._physics_lock:
+            if self._gripper_trace is None:
+                return []
+            if clear:
+                rows = self._gripper_trace.rows
+                self._gripper_trace.rows = []
+                return rows
+            rows = self._gripper_trace.rows.copy()
+        return [row.copy() for row in rows]
 
     # ----------------------- Video Capture (CaP-X Compatible) -----------------------
 

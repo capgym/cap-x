@@ -15,6 +15,10 @@ from .grasp_feasibility import cgn_approach_waypoints, plan_left_tcp_motion
 from .servoj import move_left_servoj_path
 
 
+class Tron2ServoJContactStop(RuntimeError):
+    """End the current code block after an unexpected table contact."""
+
+
 def get_left_motion_backend() -> str:
     """Return the configured left-arm Cartesian motion backend."""
     backend = os.environ.get("CAPX_TRON2_LEFT_MOTION", "servoj").lower()
@@ -73,7 +77,30 @@ class Tron2LeftMotionApi(ApiBase):
                 if backend == "servoj":
                     stream = move_left_servoj_path(self._env, path, duration_sec)
                     print(f"[{self._motion_log_name}] SERVOJ_STREAM stage={stage} {json.dumps(stream, ensure_ascii=False)}")
-                    sent = stream["completed"]
+                    contact = stream["contact_stop"]
+                    if contact is not None:
+                        trigger = contact["trigger"]
+                        after = contact["after"]
+                        feedback = {
+                            "stage": stage,
+                            "phase": contact["detected_during"],
+                            "link": trigger["link"],
+                            "trigger_force_n": trigger["normal_force_n"],
+                            "normal_force_world_n": trigger["normal_force_world_n"],
+                            "trigger_tcp_base_m": trigger["tcp_base_m"],
+                            "current_tcp_base_m": after["tcp_base_m"],
+                            "target_tcp_base_m": target.tolist(),
+                            "hold_sent": contact["hold_sent"],
+                            "motor_target_matched": contact["motor_target_matched"],
+                            "remaining_table_force_n": after.get("total_normal_force_n"),
+                            "unloaded": after.get("unloaded", False),
+                            "stationary": after.get("stationary", False),
+                            "notifications": stream["notifications"] + contact["hold_notifications"],
+                            "transport_error": contact["hold_transport_error"] or stream["error"],
+                        }
+                        print(f"[{self._motion_log_name}] STOPPED_ON_CONTACT {json.dumps(feedback)}", file=sys.stderr)
+                        raise Tron2ServoJContactStop(f"{stage}: left-arm motion interrupted by table contact")
+                    sent = stream["dispatch_completed"]
                 else:
                     sent = self._env.move_left_joint_path(path, duration_sec)
             reached = self._verify_left_tcp(target, quat, stage, backend)
@@ -107,6 +134,9 @@ class Tron2LeftMotionApi(ApiBase):
         Returns:
             True when the motion reaches the target. Planning or controller rejection,
             or a missed endpoint, returns False and leaves the arm at its resulting pose.
+
+        Raises:
+            Tron2ServoJContactStop: A loaded table contact interrupted the simulated move.
         """
         backend = get_left_motion_backend()
         target = np.asarray(pos, dtype=float).reshape(3)

@@ -49,6 +49,9 @@ DEFAULT_HOME_Q16: list[float] = [
 # fingers point along +X_base, jaws open/close horizontally along +/-Y_base.
 HORIZONTAL_GRASP_QUAT_WXYZ: list[float] = [0.70710678, 0.0, -0.70710678, 0.0]
 
+# Fixed L_ee_Joint relative to wrist_roll_L_Link in robot_zeromass_graser.urdf, in meters.
+LEFT_WRIST_TO_TCP_M = np.array([-0.0338, 0.0, -0.2125])
+
 
 class Tron2MotionRejection(RuntimeError):
     """The controller returned a valid response declining a motion."""
@@ -77,14 +80,16 @@ _MOVE_P_POSITION_LIMIT = re.compile(
 _MOVE_J_POSITION_LIMIT = re.compile(r"(?:WARN:\s*)?moveJ joint\[(?P<joint>\d+)\] out of range", re.IGNORECASE)
 
 
-def _raise_if_motion_rejected(motion: str, data: dict[str, Any], position_limit_message: re.Pattern[str]) -> None:
+def _raise_if_motion_rejected(
+    motion: str, data: dict[str, Any], position_limit_message: re.Pattern[str] | None = None,
+) -> None:
     result = data.get("result")
     if result == "success":
         return
     message = data.get("message")
     if not (isinstance(result, str) and result and isinstance(message, str) and message):
         raise RuntimeError(f"Invalid {motion} response from controller: {data}")
-    limit = position_limit_message.fullmatch(message.strip())
+    limit = position_limit_message.fullmatch(message.strip()) if position_limit_message is not None else None
     if limit is not None:
         raise Tron2JointLimitRejection(motion, data, joint_index=int(limit["joint"]),
                                       planned_point=limit.groupdict().get("point"))
@@ -255,6 +260,19 @@ class Tron2OfficialClient:
         resp = self.request("request_movej", {"time": float(duration_sec), "joint": joint})
         data = resp.get("data", {})
         _raise_if_motion_rejected("MoveJ", data, _MOVE_J_POSITION_LIMIT)
+        return data
+
+    def move_h(self, head_q2: list[float] | np.ndarray, duration_sec: float = 2.5) -> dict[str, Any]:
+        """Move the head in pitch/yaw wire order and keep the controller in position hold."""
+        joint = [float(value) for value in head_q2]
+        duration = float(duration_sec)
+        if len(joint) != 2 or not all(math.isfinite(value) for value in joint):
+            raise ValueError("MoveH expects two finite joint angles in pitch/yaw order")
+        if not math.isfinite(duration) or duration <= 0:
+            raise ValueError("MoveH expects a finite positive duration")
+        response = self.request("request_moveh", {"time": duration, "joint": joint})
+        data = response.get("data", {})
+        _raise_if_motion_rejected("MoveH", data)
         return data
 
     def move_p(

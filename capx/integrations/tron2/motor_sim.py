@@ -207,6 +207,16 @@ class Tron2MotorSim:
         return bool(command is not None and command.q_des.size >= arm_axes
                     and np.all(command.kp[:arm_axes] > 0.0))
 
+    def position_target_matches(
+        self, target: np.ndarray, *, received_after_s: float, tolerance_rad: float,
+    ) -> bool:
+        """Check a fresh controller position command in protocol order."""
+        with self._command_lock:
+            command = self._command
+        return bool(command is not None and command.received_at >= received_after_s
+                    and command.q_des.shape == target.shape
+                    and np.max(np.abs(command.q_des - target)) <= tolerance_rad)
+
     def start(self) -> None:
         if self._started:
             raise RuntimeError("TRON2 motor simulation is already started")
