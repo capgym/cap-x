@@ -6,6 +6,7 @@ import base64
 from contextlib import ExitStack
 from datetime import datetime
 import fcntl
+import hashlib
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -216,6 +217,15 @@ def open_model(stack, sim, a800, args, root):
 
 
 def stage_bundle(sim, root, manifest):
+    git_head = None
+    if (TRON2_REPO / ".git").exists():
+        try:
+            git_head = subprocess.run(
+                ["git", "rev-parse", "--verify", "HEAD"], cwd=TRON2_REPO,
+                check=True, capture_output=True, text=True, timeout=5,
+            ).stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            pass
     if "remote_root" not in manifest:
         remote = sim.run("mktemp", "-d", manifest["settings"]["runtime"] + "/mac-tron2.XXXXXXXX", capture_output=True, text=True)
         manifest["remote_root"] = remote.stdout.strip()
@@ -232,7 +242,10 @@ def stage_bundle(sim, root, manifest):
             stock_runner = TRON2_REPO / "scripts" / "run_tron2_model.py"
             tar.add(stock_runner, arcname="bundle/scripts/run_tron2_model.py")
         archive.seek(0)
+        bundle_sha256 = hashlib.file_digest(archive, "sha256").hexdigest()
+        archive.seek(0)
         sim.run("tar", "-xf", "-", "-C", remote, stdin=archive)
+    return {"local_git_head": git_head, "bundle_sha256": bundle_sha256}
 
 
 def record_event(attempt, index, event):
@@ -290,7 +303,7 @@ def completed(attempt):
     return None
 
 
-def run_episode(sim, root, manifest, episode, model_port, vdm_port, token, gpu, *, reuse_verified_vision):
+def run_episode(sim, root, manifest, episode, model_port, vdm_port, token, gpu, *, bundle_provenance, reuse_verified_vision):
     old = episode.get("active_attempt")
     if old:
         remote_old = PurePosixPath(manifest["remote_root"]) / old
@@ -305,6 +318,7 @@ def run_episode(sim, root, manifest, episode, model_port, vdm_port, token, gpu, 
     index = max((int(path.name.split("-")[1]) for path in attempts.glob("attempt-[0-9]*") if path.is_dir()), default=0) + 1
     attempt = attempts / f"attempt-{index:03d}"
     (attempt / "events").mkdir(parents=True)
+    save_bytes(attempt / "bundle_provenance.json", (json.dumps(bundle_provenance, indent=2) + "\n").encode())
     relative = attempt.relative_to(root).as_posix()
     episode.update(state="running", active_attempt=relative)
     save_manifest(root, manifest)
@@ -466,7 +480,7 @@ def run(root, manifest, args):
         with ExitStack() as stack:
             control = Path(stack.enter_context(tempfile.TemporaryDirectory(prefix="capx-tron2-", dir="/tmp")))
             sim = stack.enter_context(SSH(manifest["settings"]["sim_host"], control / "sim"))
-            stage_bundle(sim, root, manifest)
+            bundle_provenance = stage_bundle(sim, root, manifest)
             vdm_port, token = open_vdm(stack, sim, root, cli) if cli else (0, "")
             a800 = stack.enter_context(SSH(manifest["settings"]["a800_host"], control / "a800"))
             model_port = open_model(stack, sim, a800, args, root)
@@ -478,6 +492,7 @@ def run(root, manifest, args):
             for episode in pending:
                 endpoint, role = vision_endpoints.get(episode["tier"], (None, None))
                 roles = run_episode(sim, root, manifest, episode, model_port, vdm_port, token, args.sim_gpu,
+                                    bundle_provenance=bundle_provenance,
                                     reuse_verified_vision=endpoint in verified_vision)
                 if endpoint is not None and role in roles:
                     verified_vision.add(endpoint)

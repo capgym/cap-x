@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import mimetypes
+import os
 from pathlib import Path
 import re
 import sys
@@ -16,10 +17,14 @@ from tron2_paths import TRON2_REPO
 
 
 HERE = Path(__file__).resolve().parent
-OUTPUTS = HERE.parent / "outputs"
-RUNS = OUTPUTS / "m3_dashboard_runs"
 TRON2_OUTPUTS = TRON2_REPO / "outputs"
 TRON2_RUNS = TRON2_OUTPUTS / "tron2_dashboard_runs"
+LEGACY_OUTPUTS = TRON2_REPO.parent / "outputs"
+if not (LEGACY_OUTPUTS / "m3_dashboard_runs").is_dir():
+    LEGACY_OUTPUTS = TRON2_OUTPUTS
+if legacy_root := os.environ.get("CAPX_LEGACY_OUTPUTS"):
+    LEGACY_OUTPUTS = Path(legacy_root).expanduser().resolve()
+LEGACY_RUNS = LEGACY_OUTPUTS / "m3_dashboard_runs"
 PREFIX = "CAPX_EVENT\t"
 RUN_ID = re.compile(r"m3_stack_codex_mac_\d{8}_\d{6}(?:_review)?")
 COMPONENT = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}")
@@ -137,7 +142,7 @@ def write_json(path, data):
 def directory(run_id):
     if not RUN_ID.fullmatch(run_id):
         raise ValueError("Invalid run ID")
-    root = OUTPUTS if run_id.endswith("_review") else RUNS
+    root = LEGACY_OUTPUTS if run_id.endswith("_review") else LEGACY_RUNS
     return root / run_id
 
 
@@ -182,7 +187,7 @@ def state_for(root):
 
 def run_entries():
     entries = []
-    for root in (*OUTPUTS.glob("m3_stack_codex_mac_*_review"), *RUNS.glob("m3_stack_codex_mac_*")):
+    for root in (*LEGACY_OUTPUTS.glob("m3_stack_codex_mac_*_review"), *LEGACY_RUNS.glob("m3_stack_codex_mac_*")):
         if root.is_dir() and RUN_ID.fullmatch(root.name):
             replay = root.name.endswith("_review")
             entries.append({
