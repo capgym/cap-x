@@ -2,24 +2,31 @@
 
 from __future__ import annotations
 
+import warnings
 from typing import TYPE_CHECKING
 
 import mujoco
 import numpy as np
-from scipy.optimize import least_squares
+from scipy.optimize import least_squares, minimize
 from scipy.spatial.transform import Rotation
 
+from .official_client import LEFT_WRIST_TO_TCP_M as _WRIST_TO_TCP_M
 from .official_client import PROTOCOL_JOINT_NAMES
 
 if TYPE_CHECKING:
     from capx.envs.simulators.tron2_cube_lift import Tron2CubeLiftLowLevel
 
 
-# Fixed L_ee_Joint relative to wrist_roll_L_Link in robot_zeromass_graser.urdf.
-_WRIST_TO_TCP_M = np.array([-0.0338, 0.0, -0.2125])
 _MAX_POSITION_ERROR_M = 0.004
 _MAX_ORIENTATION_ERROR_RAD = np.deg2rad(3)
 _JOINT_LIMIT_MARGIN_RAD = 0.006
+_MAX_JOINT_STEP_RAD = 0.35
+_MAX_SUBDIVISION_DEPTH = 4
+_ENDPOINT_RANDOM_SEEDS = 8
+
+
+def _within_pose_tolerance(position_error: float, orientation_error: float) -> bool:
+    return position_error <= _MAX_POSITION_ERROR_M and orientation_error <= _MAX_ORIENTATION_ERROR_RAD
 
 
 class _LeftArmIK:
@@ -87,6 +94,12 @@ class _LeftArmIK:
                 return f"self-collision between {first} and {second} ({-1000 * contact.dist:.2f} mm penetration)"
         return None
 
+    def _tcp_world_jacobians(self, position: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        mujoco.mj_comPos(self.model, self.data)
+        mujoco.mj_jac(self.model, self.data, self.jac_pos, self.jac_rot,
+                      self.world_from_base @ position + self.base_origin, self.wrist)
+        return self.jac_pos[:, self.dof_ids], self.jac_rot[:, self.dof_ids]
+
     def solve(self, position: np.ndarray, rotation: Rotation, seed: np.ndarray):
         rotation_inv = rotation.inv()
         orientation_weight = 0.18  # meters per radian for the least-squares residual
@@ -96,9 +109,7 @@ class _LeftArmIK:
             error = (Rotation.from_matrix(rot) * rotation_inv).as_rotvec()
             if not jacobian:
                 return np.r_[pos - position, orientation_weight * error, 0.0001 * (q - seed)]
-            mujoco.mj_comPos(self.model, self.data)
-            mujoco.mj_jac(self.model, self.data, self.jac_pos, self.jac_rot,
-                          self.world_from_base @ pos + self.base_origin, self.wrist)
+            jac_pos, jac_rot = self._tcp_world_jacobians(pos)
             # Inverse left Jacobian of the SO(3) logarithm, for the spatial
             # angular-velocity Jacobian returned by MuJoCo.
             angle = np.linalg.norm(error)
@@ -108,8 +119,8 @@ class _LeftArmIK:
                 skew = np.array([[0., -z, y], [z, 0., -x], [-y, x, 0.]])
                 derivative += -0.5 * skew + (1 - 0.5 * angle / np.tan(angle / 2)) / angle**2 * (skew @ skew)
             return np.vstack((
-                self.world_from_base.T @ self.jac_pos[:, self.dof_ids],
-                orientation_weight * derivative @ self.world_from_base.T @ self.jac_rot[:, self.dof_ids],
+                self.world_from_base.T @ jac_pos,
+                orientation_weight * derivative @ self.world_from_base.T @ jac_rot,
                 0.0001 * np.eye(7),
             ))
 
@@ -121,11 +132,83 @@ class _LeftArmIK:
         pos, rot = self.pose(fit.x)
         return fit.x, float(np.linalg.norm(pos - position)), float((Rotation.from_matrix(rot) * rotation_inv).magnitude())
 
+    def _endpoint_issue(
+        self, position: np.ndarray, rotation: Rotation, previous: np.ndarray, candidate: np.ndarray,
+    ) -> str | None:
+        """Look for a collision-free endpoint, independently of the path and its IK branch."""
+        inverse = rotation.inv()
+        tolerances = np.array([_MAX_POSITION_ERROR_M, _MAX_ORIENTATION_ERROR_RAD])
+
+        def errors(q: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+            pos, rot = self.pose(q)
+            return pos, pos - position, (Rotation.from_matrix(rot) * inverse).as_rotvec()
+
+        def ratios(q: np.ndarray) -> np.ndarray:
+            _, dp, dr = errors(q)
+            return np.array([np.linalg.norm(dp), np.linalg.norm(dr)]) / tolerances
+
+        # Minimize the maximum of the two normalized errors. Each tolerance
+        # must hold independently, even when the tracking objective trades them off.
+        def constraints(x: np.ndarray) -> np.ndarray:
+            return x[-1] - ratios(x[:-1])
+
+        def constraint_jacobian(x: np.ndarray) -> np.ndarray:
+            pos, dp, dr = errors(x[:-1])
+            jac_pos, jac_rot = self._tcp_world_jacobians(pos)
+            # The gradient of the rotation angle uses the unit rotation axis
+            # directly with the spatial angular Jacobian.
+            position_grad = (dp / max(np.linalg.norm(dp), 1e-12)) @ self.world_from_base.T @ jac_pos
+            rotation_grad = (dr / max(np.linalg.norm(dr), 1e-12)) @ self.world_from_base.T @ jac_rot
+            gradients = np.stack([position_grad, rotation_grad]) / tolerances[:, None]
+            return np.column_stack((-gradients, np.ones(2)))
+
+        rng = np.random.default_rng(0)
+        sampled = rng.uniform(self.lower, self.upper, size=(_ENDPOINT_RANDOM_SEEDS, len(self.start)))
+        seeds = (candidate, previous, self.start, (self.lower + self.upper) / 2, *sampled)
+        bounds = [*zip(self.lower, self.upper, strict=True), (0, None)]
+        gradient = np.r_[np.zeros(len(self.start)), 1.0]
+        closest = np.full(2, np.inf)
+        endpoint_collision = None
+        for seed in seeds:
+            seed = np.clip(seed, self.lower, self.upper)
+            initial = ratios(seed)
+            if initial.max() < closest.max():
+                closest = initial
+            if initial.max() <= 1:
+                endpoint_collision = self.self_collision()
+                if endpoint_collision is None:
+                    return None
+            with warnings.catch_warnings():
+                # Older SciPy releases warn when they clip an internal step.
+                warnings.filterwarnings("ignore", "Values in x were outside bounds during a minimize step",
+                                        RuntimeWarning, module=r"scipy\.optimize\._slsqp_py")
+                fit = minimize(lambda x: x[-1], np.r_[seed, initial.max()], jac=lambda x: gradient,
+                               method="SLSQP", bounds=bounds,
+                               constraints={"type": "ineq", "fun": constraints, "jac": constraint_jacobian},
+                               options={"maxiter": 80, "ftol": 1e-7})
+            actual = ratios(np.clip(fit.x[:-1], self.lower, self.upper))
+            if actual.max() < closest.max():
+                closest = actual
+            if actual.max() <= 1:
+                endpoint_collision = self.self_collision()
+                if endpoint_collision is None:
+                    return None
+
+        if endpoint_collision is not None:
+            return (f"Endpoint IK found no collision-free solution ({endpoint_collision}). "
+                    "Change the target orientation or height.")
+        pos_error, rot_error = closest * tolerances
+        return ("Endpoint IK found no solution within the current joint limits and "
+                f"{tolerances[0] * 1000:g} mm / {np.degrees(tolerances[1]):g} deg tolerances "
+                f"(best sampled result: {pos_error * 1000:.2f} mm / {np.degrees(rot_error):.2f} deg). "
+                "Change the target orientation or height instead of subdividing this move.")
+
     def plan(self, position: np.ndarray, rotation: np.ndarray) -> tuple[np.ndarray | None, str | None]:
         q = self.start.copy()
         start_pos, start_mat = self.pose(q)
         start_rot = Rotation.from_matrix(start_mat)
-        delta_rot = (start_rot.inv() * Rotation.from_matrix(rotation)).as_rotvec()
+        target_rot = Rotation.from_matrix(rotation)
+        delta_rot = (start_rot.inv() * target_rot).as_rotvec()
         with np.errstate(over="ignore"):
             displacement = position - start_pos
             subdivisions = max(np.linalg.norm(displacement) / 0.024,
@@ -134,27 +217,48 @@ class _LeftArmIK:
             return None, "TCP target is out of range"
         count = max(1, int(np.ceil(subdivisions)))
         path = [q]
-        for step in range(1, count + 1):
-            fraction = step / count
+        endpoint_found = False
+
+        def advance(left: float, fraction: float, step: int, depth: int = 0) -> str | None:
+            nonlocal endpoint_found
+            q = path[-1]
             p = start_pos + fraction * displacement
             r = start_rot * Rotation.from_rotvec(fraction * delta_rot)
             q_next, pos_error, rot_error = self.solve(p, r, q)
-            if pos_error > _MAX_POSITION_ERROR_M or rot_error > _MAX_ORIENTATION_ERROR_RAD:
+            pose_ok = _within_pose_tolerance(pos_error, rot_error)
+            changes = np.abs(q_next - q)
+            joint = int(np.argmax(changes))
+            jump = changes[joint] > _MAX_JOINT_STEP_RAD
+            if (not pose_ok or jump) and not endpoint_found:
+                issue = self._endpoint_issue(position, target_rot, q, q_next)
+                if issue is not None:
+                    return issue
+                endpoint_found = True
+            if not pose_ok:
                 limited = np.flatnonzero(np.minimum(q_next - self.lower, self.upper - q_next) < 1e-4)
                 bounds = ", ".join(PROTOCOL_JOINT_NAMES[i] for i in limited)
                 detail = f", at planning bounds: {bounds}" if bounds else ""
-                return None, (f"IK failed at waypoint {step}/{count} "
-                              f"({pos_error * 1000:.2f} mm / {np.degrees(rot_error):.2f} deg{detail})")
-            changes = np.abs(q_next - q)
-            joint = int(np.argmax(changes))
-            if changes[joint] > 0.35:
-                return None, (f"{PROTOCOL_JOINT_NAMES[joint]} changes {changes[joint]:.3f} rad "
-                              f"at waypoint {step}/{count} (limit 0.35 rad)")
+                return (f"Endpoint IK found a solution, but straight-path IK failed at waypoint {step}/{count} "
+                        f"({pos_error * 1000:.2f} mm / {np.degrees(rot_error):.2f} deg{detail}). "
+                        "Change the approach path.")
+            if jump:
+                if depth == _MAX_SUBDIVISION_DEPTH:
+                    return ("Endpoint IK found a solution, but the straight path still exceeds the joint step limit "
+                            f"after local refinement near waypoint {step}/{count} "
+                            f"({PROTOCOL_JOINT_NAMES[joint]} changes {changes[joint]:.3f} rad, "
+                            f"limit {_MAX_JOINT_STEP_RAD:.2f} rad). Change the approach path.")
+                mid = (left + fraction) / 2
+                return advance(left, mid, step, depth + 1) or advance(mid, fraction, step, depth + 1)
             collision = self.self_collision()
             if collision is not None:
-                return None, f"{collision} at waypoint {step}/{count}"
+                return f"{collision} at waypoint {step}/{count}"
             path.append(q_next)
-            q = q_next
+            return None
+
+        for step in range(1, count + 1):
+            issue = advance((step - 1) / count, step / count, step)
+            if issue is not None:
+                return None, issue
         return np.stack(path), None
 
 
