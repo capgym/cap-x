@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+here=$(cd -- "$(dirname -- "$0")" && pwd)
+python="$PWD/.venv/bin/python"
+case "${1:-}" in
+    scripts/run_tron2_model.py|*/scripts/run_tron2_model.py)
+        shift
+        export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
+        exec "$python" "$here/run_rgbd.py" "$@"
+        ;;
+esac
+exec "$python" "$@"

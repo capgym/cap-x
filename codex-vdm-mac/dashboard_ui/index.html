@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="zh-Hans">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>运行观察台 · CaP-X</title>
+    <link rel="stylesheet" href="/style.css">
+    <script src="/app.js" type="module"></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand"><span class="brand-icon" aria-hidden="true"><svg viewBox="0 0 28 28" fill="none"><path d="M5 20v-4l5-3.2 3.1-7.2 4.5 2.3 3.5 5.3m-1.8.8 4.3-2.5m-18 8.6h7m5.7-13.4 2.6-1.5"/><circle cx="10" cy="12.7" r="2.1"/><circle cx="13.2" cy="5.5" r="1.9"/></svg></span><strong>CaP-X</strong><span class="separator"></span><span>运行观察台</span></div>
+      <div class="connection" id="connection" role="status"><span class="status-dot"></span><span id="connection-label">正在连接</span></div>
+    </header>
+    <main>
+      <section class="run-header" aria-labelledby="run-title">
+        <div class="run-info">
+          <div class="run-mode" id="run-mode">实验记录</div>
+          <h1 id="run-title">运行观察台</h1>
+          <p id="run-summary" hidden></p>
+          <details id="run-details" class="run-details" hidden><summary>运行摘要</summary><a id="run-log" target="_blank" rel="noopener" hidden>打开运行日志</a><pre id="summary-detail"></pre></details>
+        </div>
+        <div class="run-picker">
+          <div class="run-scopes" role="group" aria-label="按试次状态查看">
+            <button type="button" data-run-group="current" aria-pressed="false" disabled>当前试次<span class="run-scope-count"></span></button>
+            <button type="button" data-run-group="history" aria-pressed="false" disabled>历史记录<span class="run-scope-count"></span></button>
+          </div>
+          <span class="select-wrap"><select id="run-select" aria-label="选择试次" aria-describedby="selected-batch" disabled><option value="">加载中…</option></select><svg class="chevron" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></span>
+          <span id="selected-batch" class="selected-batch" hidden></span>
+        </div>
+      </section>
+      <div class="workspace">
+        <section class="panel timeline" aria-labelledby="timeline-title">
+          <header class="panel-header timeline-header">
+            <div class="panel-title"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none"><path d="M5 5h14v11H9l-4 3V5Zm4 5h6m-6 3h4"/></svg><h2 id="timeline-title">对话记录</h2><span id="event-count" class="event-count"></span></div>
+            <label class="follow"><input type="checkbox" id="follow" checked><span>跟随最新</span></label>
+          </header>
+          <nav class="filters" aria-label="筛选对话">
+            <button data-filter="all" aria-pressed="true">全部</button>
+            <button data-filter="qwen" aria-pressed="false"><span class="model-dot qwen"></span>Qwen</button>
+            <button data-filter="codex" aria-pressed="false"><span class="model-dot codex"></span>Codex</button>
+            <button data-filter="sim" aria-pressed="false"><span class="model-dot sim"></span>仿真</button>
+          </nav>
+          <div class="stream" id="stream" tabindex="0" role="log" aria-label="按顺序排列的对话与执行反馈">
+            <div id="events"></div>
+            <div id="empty" class="empty">正在加载运行记录…</div>
+          </div>
+        </section>
+        <section class="panel camera" aria-labelledby="camera-title">
+          <header class="panel-header">
+            <div class="panel-title"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none"><path d="M3.5 6h17v12h-17zM7 9h.01M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/></svg><h2 id="camera-title">仿真画面</h2></div>
+            <span class="camera-mode" id="camera-mode">等待数据</span>
+          </header>
+          <div class="viewport">
+            <video id="camera-video" controls playsinline preload="metadata" hidden></video>
+            <img id="camera-image" alt="机器人仿真摄像头画面" hidden>
+            <div id="camera-empty" class="camera-empty"><svg viewBox="0 0 44 44" aria-hidden="true" fill="none"><path d="M8 18V9h9m10 0h9v9m0 8v9h-9m-10 0H8v-9m9-4h10m-5-5v10"/></svg><span>等待仿真画面</span></div>
+          </div>
+          <footer class="camera-footer"><span id="camera-caption">相机视角</span><span class="camera-actions"><button type="button" id="latest" hidden>跟随相机</button><button type="button" id="combined" hidden>查看合并视频</button></span></footer>
+        </section>
+      </div>
+    </main>
+  </body>
+</html>

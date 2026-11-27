@@ -1,0 +1,46 @@
+env:
+  _target_: rgbd_tasks.Tron2CubeLiftRgbdCodeEnv
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    low_level: tron2_cube_lift_low_level
+    privileged: false
+    enable_render: true
+    apis:
+      - Tron2RgbdNoCgnHighApi
+    multi_turn_prompt: |
+      Task: lift the red cube at least 10 cm with the left arm.
+      The following Python has already run in this episode:
+      ```python
+      {executed_code}
+      ```
+      Console stdout:
+      ```
+      {console_stdout}
+      ```
+      Console stderr:
+      ```
+      {console_stderr}
+      ```
+      Read the motion stage, outcome, and measured TCP before choosing
+      another action. A rejected or missed motion returns False. Use the measured
+      TCP as the starting state. If a move failed, explain in a print statement
+      which part of the grasp geometry or motion sequence you are changing and why.
+      If the scene needs checking, use
+      observe_object("red cube") again and compare the visible RGB-D estimates.
+      Check cube motion and whether it remains held using the available
+      observations. If the grasp has already reached and closed, consider that
+      measured state before choosing a new movement.
+      If more action or a check is needed, reply REGENERATE followed by a fenced
+      Python code block. Reply FINISH if you are done with the episode.
+
+api_servers:
+  - _target_: capx.serving.launch_sam3_server.main
+    device: cuda
+    host: 127.0.0.1
+    port: 8114
+
+record_video: true
+save_multiturn_prompts: true
+output_dir: ./outputs/tron2_rgbd_geometry_m2
+trials: 1
+num_workers: 1

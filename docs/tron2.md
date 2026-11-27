@@ -32,8 +32,14 @@ positive `approach_offset` for a staged approach or omit it for one direct move.
 By default, local IK plans the path and ServoJ streams the time-scaled joint
 trajectory at 300 Hz. Set `CAPX_TRON2_LEFT_MOTION=movej` to execute the local IK
 waypoints with MoveJ or `CAPX_TRON2_LEFT_MOTION=movep` to use official Cartesian
-motion. All three backends verify the measured TCP afterward. The ServoJ log
-records the actual send rate and original controller notifications.
+motion. All three backends verify the measured TCP after requests that reach
+the final target check. The ServoJ log records the actual send rate and original
+controller notifications.
+
+The local planner diagnoses endpoints that fail its bounded IK search and
+refines large joint steps along the path. During ServoJ execution, the tabletop
+simulator monitors table contact and can interrupt the stream and send one hold
+target. This protection uses simulated contact forces.
 
 ## Worktrees and runtime files
 
@@ -48,10 +54,9 @@ records the actual send rate and original controller notifications.
 | 4090w `~/btian/capx-qwen` | Qwen serving environment and checkpoint |
 | 4090w `~/btian/capx-tron2-runs/` | New TRON2 run outputs, with one directory per run |
 
-Both `tron2-sim` worktrees use `codex/tron2-single-world`. Transfer reviewed
-revisions by Git bundle or a private remote. The configured `origin` is the
-public CaP-X upstream. The old `cap-x-tron2` worktree and temporary trial folders
-on 4090w contain historical changes and recordings. The outer Mac `Cap-X`
+Both `tron2-sim` worktrees use `codex/tron2-single-world`. Keep the Mac and
+Linux checkouts on the same revision. The old `cap-x-tron2` worktree and
+temporary trial folders on 4090w contain historical changes and recordings. The outer Mac `Cap-X`
 folder is a workspace container. Run Git inside its child worktrees.
 
 The 4090w trial currently uses the Python environment from the upstream checkout.
@@ -133,3 +138,10 @@ batch through `--candidate-file` is available for high-level vision diagnostics.
 `evaluation/results.json` records the effective profile, seed, reward, execution
 status and video path for each episode. The per-episode artifacts include
 per-turn execution metrics, generated code, feedback and video.
+
+## Run paired RGB-D evaluations from the Mac
+
+The [Mac launcher guide](../codex-vdm-mac/TRON2.md) covers the RGB-D-only
+M1–M3 profiles, Qwen serving, the live dashboard, and how to resume a batch.
+The model sees measured TCP feedback and a neutral interruption status.
+Physical contact details are available in the raw simulator logs.

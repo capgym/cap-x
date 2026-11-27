@@ -13,5 +13,3 @@ __all__ = [
     "PROTOCOL_JOINT_NAMES",
     "Tron2OfficialClient",
 ]
-
-

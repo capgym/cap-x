@@ -1,0 +1,7 @@
+
+TRON2 specifications and coordinate contracts:
+- The controller's left wrist pitch and roll limits are both [-0.7505, +0.7505] radians (about ±43 degrees). The local planner reserves 0.006 radians inside each limit.
+- `get_left_ee_pose()` returns the measured left TCP XYZ in meters in base_Link and its WXYZ quaternion.
+- `make_grasp_pose()` takes a desired finger-pad midpoint and returns `tcp_xyz`, which includes the tool offset. A translated TCP waypoint is computed relative to `tcp_xyz`.
+- Reversing `jaw_direction` with the same `finger_direction` rotates the tool orientation by 180 degrees about the finger direction.
+- In the simulated collision geometry, the fingertips extend along `finger_direction` (TCP local -Z) about 34 mm beyond the nominal pad midpoint at full opening and about 39 mm at a 50 mm opening.

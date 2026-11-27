@@ -127,8 +127,7 @@ if _libero_available:
     register_api("FrankaLiberoApi", lambda env: FrankaLiberoApi(env, use_sam3=True))
     register_api("FrankaLiberoApiReduced", FrankaLiberoApiReduced)
     register_api("FrankaLiberoApiReducedSkillLibrary", FrankaLiberoApiReducedSkillLibrary)
-    
-    
+
 try:
     from .tron2.control_privileged import Tron2ControlPrivilegedApi
     register_api("Tron2ControlPrivilegedApi", Tron2ControlPrivilegedApi)
