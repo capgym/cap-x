@@ -770,6 +770,7 @@ def _run_single_trial(
     reward = 0.0
     terminated = truncated = False
     code_block_idx = 0
+    budget_exhausted = False
 
     # Track whether we're recording frames (for video diff or record_video)
     recording_frames = (
@@ -813,6 +814,18 @@ def _run_single_trial(
         if multi_turn_prompt:
             if "terminated episode" in info_step["stderr"]:
                 truncated = True
+                break
+            if code_block_idx > MULTITURN_LIMIT:
+                # The final action still contributes diagnostics and an image,
+                # but no further decision can run within the execution budget.
+                if info_step["stderr"]:
+                    stderr_history.append(info_step["stderr"])
+                if visual_feedback_base64_history and hasattr(env, "render"):
+                    _, final_img = _get_visual_feedback(env)
+                    if final_img is not None:
+                        visual_feedback_imgs.append(final_img)
+                budget_exhausted = True
+                print(f"budget_exhausted: executed {code_block_idx} code blocks")
                 break
 
             # Get turn frames for video differencing
@@ -915,6 +928,8 @@ def _run_single_trial(
         num_regenerations, num_finishes, num_code_blocks,
         stderr_override=stderr,
     )
+    if budget_exhausted:
+        log_lines.append(f"Execution ended at the code block budget ({code_block_idx} executed).")
 
     code_path = _save_trial_artifacts(
         config, trial, info_step["sandbox_rc"], reward,

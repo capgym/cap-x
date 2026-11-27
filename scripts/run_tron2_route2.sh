@@ -153,7 +153,7 @@ else
     namespace_prefix=(exec)
 fi
 
-"${namespace_prefix[@]}" unshare -Urnmpi --fork --mount-proc --propagation private bash -s -- \
+"${namespace_prefix[@]}" unshare -Urnmpi --fork --kill-child --mount-proc --propagation private bash -s -- \
     "$repo" "$vendor" "$test_opt" "$output" "$python" "$sdk" "$tier" "$relay_socket" "$model_url" \
     "$vdm_relay_socket" "$vdm_url" \
     "${sweep_args[@]}" <<'NAMESPACE'

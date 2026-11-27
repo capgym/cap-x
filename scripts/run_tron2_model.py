@@ -8,6 +8,7 @@ import io
 import json
 import math
 import os
+import re
 import select
 import socket
 import socketserver
@@ -111,30 +112,39 @@ def _relayed_endpoint(socket_path: Path, host_url: str):
             listener.join()
 
 
-def _check_vision_endpoint(model: str, url: str, api_key: str | None, declared_vlm: bool) -> None:
+def _check_vision_endpoint(
+    model: str, url: str, api_key: str | None, declared_vlm: bool, *, reuse_verified: bool = False,
+) -> None:
     """Verify the endpoint handles inline RGB before enabling CaP-X vision feedback."""
-    import requests
-    from PIL import Image
-
     from capx.llm import VLM_MODELS
 
     if model not in VLM_MODELS and not declared_vlm:
         raise ValueError(f"Declare the vision-capable endpoint for {model!r} with --model-is-vlm or --vdm-model-is-vlm")
-    with io.BytesIO() as image:
-        Image.new("RGB", (112, 112), color=(0, 210, 0)).save(image, format="PNG")
-        image_url = "data:image/png;base64," + base64.b64encode(image.getvalue()).decode("ascii")
-    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
-    response = requests.post(
-        url, headers=headers, timeout=200,
-        json={"model": model, "max_tokens": 512, "messages": [{"role": "user", "content": [
-            {"type": "text", "text": "What color fills this image? Answer using one English color word."},
-            {"type": "image_url", "image_url": {"url": image_url}},
-        ]}]},
-    )
-    response.raise_for_status()
-    answer = response.json()["choices"][0]["message"]["content"]
-    if not isinstance(answer, str) or "green" not in answer.lower():
-        raise ValueError(f"Vision endpoint for {model!r} did not identify the RGB probe image")
+    if not reuse_verified:
+        import requests
+        from PIL import Image
+
+        with io.BytesIO() as image:
+            Image.new("RGB", (112, 112), color=(0, 210, 0)).save(image, format="PNG")
+            image_url = "data:image/png;base64," + base64.b64encode(image.getvalue()).decode("ascii")
+        headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+        payload = {"model": model, "temperature": 0, "max_tokens": 512, "messages": [
+            {"role": "user", "content": [
+                {"type": "text", "text": "What color fills this image? Answer using one English color word."},
+                {"type": "image_url", "image_url": {"url": image_url}},
+            ]},
+        ]}
+        for _ in range(2):
+            response = requests.post(url, headers=headers, timeout=200, json=payload)
+            response.raise_for_status()
+            try:
+                answer = response.json()["choices"][0]["message"]["content"]
+            except (ValueError, KeyError, IndexError, TypeError) as exc:
+                raise ValueError(f"Invalid RGB probe response for {model!r}") from exc
+            if isinstance(answer, str) and re.search(r"\bgreen\b", answer, re.IGNORECASE):
+                break
+        else:
+            raise ValueError(f"Vision endpoint for {model!r} did not identify the RGB probe image. Last answer {str(answer)[:120]!r}")
     if model not in VLM_MODELS:
         VLM_MODELS.append(model)
 
@@ -278,6 +288,7 @@ def _evaluate(cli: argparse.Namespace, model_url: str, vdm_url: str | None = Non
         "max_code_blocks": trial_module.MULTITURN_LIMIT + 1,
         "candidate_file": str(cli.candidate_file) if cli.candidate_file else None,
         "verified_vision_endpoints": [],
+        "vision_probe_reused": cli.reuse_verified_vision,
         "trials": results,
     }
 
@@ -295,13 +306,20 @@ def _evaluate(cli: argparse.Namespace, model_url: str, vdm_url: str | None = Non
         env = instantiate(env_factory)
         env.low_level_env.cube_xy_jitter_m = cli.cube_xy_jitter_m
         _wait_for_controller(env, cli.route2_startup_dir)
-        if visual_feedback:
-            _check_vision_endpoint(launch.model, launch.server_url, coding_api_key, cli.model_is_vlm)
-            report["verified_vision_endpoints"].append("coding")
-        if vdm_model:
-            _check_vision_endpoint(vdm_model, launch.visual_differencing_model_server_url, vdm_api_key,
-                                   cli.vdm_model_is_vlm or (vdm_model == cli.model and cli.model_is_vlm))
-            report["verified_vision_endpoints"].append("visual_differencing")
+        try:
+            if visual_feedback:
+                _check_vision_endpoint(launch.model, launch.server_url, coding_api_key, cli.model_is_vlm,
+                                       reuse_verified=cli.reuse_verified_vision)
+                report["verified_vision_endpoints"].append("coding")
+            if vdm_model:
+                _check_vision_endpoint(vdm_model, launch.visual_differencing_model_server_url, vdm_api_key,
+                                       cli.vdm_model_is_vlm or (vdm_model == cli.model and cli.model_is_vlm),
+                                       reuse_verified=cli.reuse_verified_vision)
+                report["verified_vision_endpoints"].append("visual_differencing")
+        except Exception as exc:
+            report["vision_probe_error"] = str(exc)
+            save_report()
+            raise
         save_report()
         for trial in range(1, cli.trials + 1):
             seed = cli.first_seed + trial - 1
@@ -331,6 +349,7 @@ def main() -> int:
     parser.add_argument("--vdm-model", help="Image differencing model for M3/M4. Defaults to --model.")
     parser.add_argument("--vdm-server-url", help="Host loopback VDM endpoint. Defaults to --server-url.")
     parser.add_argument("--vdm-model-is-vlm", action="store_true", help="Declare a custom served VDM model as image-capable.")
+    parser.add_argument("--reuse-verified-vision", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--route2-startup-dir", type=Path)
     parser.add_argument("--candidate-file", type=Path, help="Replay a saved CGN batch for diagnostics.")
@@ -376,6 +395,8 @@ def main() -> int:
         parser.error("VDM settings are available for M3 and M4")
     if cli.vdm_server_url and not cli.vdm_relay_socket:
         parser.error("The namespace launcher must supply a relay for --vdm-server-url")
+    if cli.reuse_verified_vision and cli.tier not in ("M2", *_VDM_TIERS):
+        parser.error("Vision probe reuse requires a vision tier")
     with ExitStack() as stack:
         model_url = stack.enter_context(_relayed_endpoint(cli.relay_socket, cli.server_url))
         vdm_url = None
